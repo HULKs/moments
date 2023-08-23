@@ -1,5 +1,15 @@
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
+
 use anyhow::{Context, Result};
-use axum::{Router, Server};
+use axum::{
+    extract::{Multipart, Path, State},
+    routing::post,
+    Router, Server,
+};
 use clap::Parser;
 use tower_http::services::ServeDir;
 
@@ -16,10 +26,12 @@ struct Arguments {
 #[tokio::main]
 async fn main() -> Result<()> {
     let arguments = Arguments::parse();
+    let storage = PathBuf::from(arguments.storage);
 
     let app = Router::new()
         .nest_service("/", ServeDir::new("assets/"))
-        .nest_service("/image", ServeDir::new(arguments.storage));
+        .nest_service("/image", ServeDir::new(&storage))
+        .route("/upload/:event", post(upload_image).with_state(storage));
 
     Server::bind(
         &format!("{}:{}", arguments.host, arguments.port)
@@ -30,4 +42,26 @@ async fn main() -> Result<()> {
     .await
     .context("failed to start server")?;
     Ok(())
+}
+
+// test with
+// curl --location --request POST 'http://localhost:3000/upload/rohow2023' \
+//      --header 'Content-Type: multipart/form-data' \
+//      --form '0003.jpg=@/my_picture.jpg'
+async fn upload_image(
+    State(storage): State<PathBuf>,
+    Path(path): Path<PathBuf>,
+    mut form_data: Multipart,
+) {
+    while let Some(field) = form_data.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+
+        let destination = storage.join(&path).join(&name);
+        println!("Storing {name} in {}", destination.display());
+
+        let file = File::create(destination).unwrap();
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&data).unwrap();
+    }
 }
