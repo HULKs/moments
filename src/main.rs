@@ -29,8 +29,8 @@ async fn main() -> Result<()> {
     let storage = PathBuf::from(arguments.storage);
 
     let app = Router::new()
-        .nest_service("/", ServeDir::new("assets/"))
-        .nest_service("/image", ServeDir::new(&storage))
+        .nest_service("/", ServeDir::new("frontend/"))
+        .nest_service("/images", ServeDir::new(&storage))
         .route("/upload/:event", post(upload_image).with_state(storage));
 
     Server::bind(

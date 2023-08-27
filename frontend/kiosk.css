@@ -1,0 +1,26 @@
+html,
+body {
+  background-color: #000;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 15vw 40vw 15vw 15vw 15vw;
+  grid-template-rows: 100vh;
+  transition: grid-template-columns 3s ease;
+}
+
+.column {
+  position: relative;
+}
+
+img {
+  display: block;
+  object-fit: cover;
+  border-radius: 1vw;
+  width: 100%;
+}
