@@ -9,17 +9,25 @@ body {
 
 body {
   display: grid;
-  grid-template-columns: 15vw 40vw 15vw 15vw 15vw;
+  grid-template-columns: 1fr 2fr 1fr 1fr 1fr;
   grid-template-rows: 100vh;
-  transition: grid-template-columns 3s ease;
 }
 
 .column {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.column.reverse {
+  flex-direction: column-reverse;
 }
 
 img {
   display: block;
+  flex-grow: 0;
+  flex-shrink: 0;
   object-fit: cover;
   border-radius: 1vw;
   width: 100%;

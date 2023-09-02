@@ -15,14 +15,59 @@ class Recommender {
   }
 }
 
+let stop = false;
+
+async function scroller(element, recommender) {
+  let animation = null;
+  const durationPer100Percent = Math.random() * 5000 + 5000;
+  while (!stop) {
+    const image = element.insertBefore(
+      document.createElement("img"),
+      element.firstChild
+    );
+    image.style.setProperty("width", "0%");
+
+    await new Promise((resolve, reject) => {
+      image.addEventListener("load", () => resolve());
+      image.addEventListener("error", (error) => reject(error));
+      image.src = new URL(
+        `../images/${recommender.next().filename}`,
+        window.location
+      );
+    });
+
+    if (animation !== null) {
+      await animation.finished;
+    }
+
+    if (animation === null) {
+      animation = new Animation(
+        new KeyframeEffect(image, [{ width: "0%" }, { width: "100%" }], {
+          duration:
+            (image.naturalHeight / image.naturalWidth) * durationPer100Percent,
+          easing: "linear",
+        }),
+        document.timeline
+      );
+    }
+    animation.effect.target = image;
+    animation.play();
+    image.style.removeProperty("width");
+  }
+}
+
 class Column {
+  // scrolling by controlling top on column, no scroller element
   constructor(element, recommender) {
     this.element = element;
     this.recommender = recommender;
-    // this.scrollAnimation = new Animation(
-    //   new KeyframeEffect(this.element.querySelector(".scroller")),
-    //   document.timeline
-    // );
+    this.scrollAnimation = new Animation(
+      new KeyframeEffect(this.element.querySelector(".scroller"), null),
+      document.timeline
+    );
+    this.scrollAnimation.onfinish = () => {
+      console.log("Finished");
+    };
   }
   removeOutOfViewport() {
     const images = this.element.querySelectorAll("img");
@@ -81,25 +126,50 @@ class Column {
   }
   updateScrollerMarginTop() {
     const images = this.element.querySelectorAll("img");
-    if (images.length >= 2) {
-      this.element
-        .querySelector(".scroller")
-        .style.setProperty(
-          "margin-top",
-          `${-images[1].getBoundingClientRect().height}px`
-        );
+    if (images.length < 2) {
+      return;
     }
+    this.element
+      .querySelector(".scroller")
+      .style.setProperty(
+        "margin-top",
+        `${-images[1].getBoundingClientRect().height}px`
+      );
+  }
+  scroll() {
+    const images = this.element.querySelectorAll("img");
+    if (images.length < 2) {
+      return;
+    }
+    this.scrollAnimation.cancel();
+    const height = images[1].getBoundingClientRect().height;
+    const speedInPixelPerSecond = 10;
+    const duration = (height / speedInPixelPerSecond) * 1000;
+    this.scrollAnimation.effect.setKeyframes([
+      { marginTop: `${-height}px` },
+      { marginTop: `0px` },
+    ]);
+    this.scrollAnimation.effect.updateTiming({
+      duration: duration,
+      fill: "forwards",
+      easing: "linear",
+    });
+    this.scrollAnimation.play();
   }
 }
 
 const recommender = new Recommender(
   new URL("../images/index.json", window.location)
 );
-const column = new Column(document.querySelector(".column"), recommender);
+// const column = new Column(document.querySelector(".column"), recommender);
+const columns = document.querySelectorAll(".column");
 (async () => {
   await recommender.update();
-  column.removeOutOfViewport();
-  await column.fillColumn();
+  // columns.forEach((column) => {
+  //   scroller(column, recommender);
+  // });
+  // column.removeOutOfViewport();
+  // await column.fillColumn();
 })();
 
 // class Image {
