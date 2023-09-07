@@ -62,7 +62,7 @@ impl Indexer {
 async fn collect_images(storage: impl AsRef<Path>) -> Result<Vec<Image>, IndexError> {
     println!("indexing {}", storage.as_ref().display());
     // TODO: walkdir is not async
-    let walker = WalkDir::new(storage).into_iter();
+    let walker = WalkDir::new(&storage).into_iter();
     let entries = walker
         .filter_entry(|entry| {
             entry.file_type().is_dir()
@@ -75,11 +75,14 @@ async fn collect_images(storage: impl AsRef<Path>) -> Result<Vec<Image>, IndexEr
         .collect::<Result<Vec<_>, _>>()?;
     let mut images = Vec::with_capacity(entries.len());
     for entry in &entries {
+        if entry.file_type().is_dir() {
+            continue;
+        }
         let path = entry.path();
         let metadata = metadata(path).await?;
         let modified = metadata.modified()?;
         images.push(Image {
-            path: path.to_path_buf(),
+            path: path.strip_prefix(&storage).unwrap().to_path_buf(),
             modified,
         });
     }

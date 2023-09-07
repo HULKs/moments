@@ -5,7 +5,7 @@ class Recommender {
   }
   async update() {
     const response = await fetch(this.url);
-    this.images = await response.json();
+    this.images = (await response.json()).images;
     console.log(`Index contains ${this.images.length} images`);
   }
   next() {
@@ -23,7 +23,7 @@ async function scroller(element, recommender) {
   while (!stop) {
     const image = element.insertBefore(
       document.createElement("img"),
-      element.firstChild
+      element.firstChild,
     );
     image.style.setProperty("width", "0%");
 
@@ -31,8 +31,8 @@ async function scroller(element, recommender) {
       image.addEventListener("load", () => resolve());
       image.addEventListener("error", (error) => reject(error));
       image.src = new URL(
-        `../images/${recommender.next().filename}`,
-        window.location
+        `../images/${recommender.next().path}`,
+        window.location,
       );
     });
 
@@ -47,7 +47,7 @@ async function scroller(element, recommender) {
             (image.naturalHeight / image.naturalWidth) * durationPer100Percent,
           easing: "linear",
         }),
-        document.timeline
+        document.timeline,
       );
     }
     animation.effect.target = image;
@@ -63,7 +63,7 @@ class Column {
     this.recommender = recommender;
     this.scrollAnimation = new Animation(
       new KeyframeEffect(this.element.querySelector(".scroller"), null),
-      document.timeline
+      document.timeline,
     );
     this.scrollAnimation.onfinish = () => {
       console.log("Finished");
@@ -82,7 +82,7 @@ class Column {
       Array.from(this.element.querySelectorAll("img")).reduce(
         (sum, image, index) =>
           sum + (index > 2 ? image.getBoundingClientRect().height : 0),
-        0
+        0,
       );
     while (currentHeight() < window.innerHeight) {
       const image = this.element.appendChild(document.createElement("img"));
@@ -90,8 +90,8 @@ class Column {
         image.addEventListener("load", () => resolve());
         image.addEventListener("error", (error) => reject(error));
         image.src = new URL(
-          `../images/${this.recommender.next().filename}`,
-          window.location
+          `../images/${this.recommender.next().path}`,
+          window.location,
         );
       });
       this.updatePositionAbsolute();
@@ -133,7 +133,7 @@ class Column {
       .querySelector(".scroller")
       .style.setProperty(
         "margin-top",
-        `${-images[1].getBoundingClientRect().height}px`
+        `${-images[1].getBoundingClientRect().height}px`,
       );
   }
   scroll() {
@@ -158,9 +158,7 @@ class Column {
   }
 }
 
-const recommender = new Recommender(
-  new URL("../images/index.json", window.location)
-);
+const recommender = new Recommender(new URL("../index.json", window.location));
 // const column = new Column(document.querySelector(".column"), recommender);
 const columns = document.querySelectorAll(".column");
 (async () => {
@@ -179,7 +177,7 @@ const columns = document.querySelectorAll(".column");
 //     this.unitHeight = this.height / this.width;
 //     this.element = document.body.appendChild(document.createElement("img"));
 //     this.element.src = new URL(
-//       `../images/${metadata.filename}`,
+//       `../images/${metadata.path}`,
 //       window.location
 //     );
 //     // this.element.style.display = "none";
