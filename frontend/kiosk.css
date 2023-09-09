@@ -9,26 +9,21 @@ body {
 
 body {
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr 1fr 1fr;
-  grid-template-rows: 100vh;
+  grid-template-columns: 100vw;
 }
 
-.column {
+.row {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex-wrap: nowrap;
-}
-
-.column.reverse {
-  flex-direction: column-reverse;
+  justify-content: center;
 }
 
 img {
   display: block;
-  flex-grow: 0;
-  flex-shrink: 0;
   object-fit: cover;
-  border-radius: 1vw;
-  width: 100%;
+  border-radius: 0.125cm;
+  will-change: box-shadow, transform, width;
+  height: 100%;
 }
