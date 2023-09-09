@@ -1,3 +1,15 @@
+const baseDuration = 1250;
+const options = {
+  highlightScale: 1.5,
+  popUpDuration: baseDuration,
+  highlightDuration: baseDuration * 5,
+  popDownDuration: baseDuration * 0.75,
+  allowedRelativeWidthFromCenterForAdditions: 0.4, // from center in one direction, so actually twice
+  easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
+  amountOfRows: 5,
+  stopIteration: false,
+};
+
 class Recommender {
   constructor(url) {
     this.url = url;
@@ -15,254 +27,219 @@ class Recommender {
   }
 }
 
-let stop = false;
-
-async function scroller(element, recommender) {
-  let animation = null;
-  const durationPer100Percent = Math.random() * 5000 + 5000;
-  while (!stop) {
-    const image = element.insertBefore(
-      document.createElement("img"),
-      element.firstChild,
-    );
-    image.style.setProperty("width", "0%");
-
-    await new Promise((resolve, reject) => {
-      image.addEventListener("load", () => resolve());
-      image.addEventListener("error", (error) => reject(error));
-      image.src = new URL(
-        `../images/${recommender.next().path}`,
-        window.location,
-      );
-    });
-
-    if (animation !== null) {
-      await animation.finished;
-    }
-
-    if (animation === null) {
-      animation = new Animation(
-        new KeyframeEffect(image, [{ width: "0%" }, { width: "100%" }], {
-          duration:
-            (image.naturalHeight / image.naturalWidth) * durationPer100Percent,
-          easing: "linear",
-        }),
-        document.timeline,
-      );
-    }
-    animation.effect.target = image;
-    animation.play();
-    image.style.removeProperty("width");
-  }
-}
-
-class Column {
-  // scrolling by controlling top on column, no scroller element
-  constructor(element, recommender) {
-    this.element = element;
-    this.recommender = recommender;
-    this.scrollAnimation = new Animation(
-      new KeyframeEffect(this.element.querySelector(".scroller"), null),
-      document.timeline,
-    );
-    this.scrollAnimation.onfinish = () => {
-      console.log("Finished");
-    };
-  }
-  removeOutOfViewport() {
-    const images = this.element.querySelectorAll("img");
-    for (let index = 0; index < images.length; ++index) {
-      if (images[index].getBoundingClientRect().top > window.innerHeight) {
-        this.element.removeChild(images[index]);
-      }
-    }
-  }
-  async fillColumn() {
-    const currentHeight = () =>
-      Array.from(this.element.querySelectorAll("img")).reduce(
-        (sum, image, index) =>
-          sum + (index > 2 ? image.getBoundingClientRect().height : 0),
-        0,
-      );
-    while (currentHeight() < window.innerHeight) {
-      const image = this.element.appendChild(document.createElement("img"));
-      await new Promise((resolve, reject) => {
-        image.addEventListener("load", () => resolve());
-        image.addEventListener("error", (error) => reject(error));
-        image.src = new URL(
-          `../images/${this.recommender.next().path}`,
-          window.location,
-        );
-      });
-      this.updatePositionAbsolute();
-      this.updateScrollerMarginTop();
-    }
-    // console.log(images);
-    // console.log(
-    //   images[0],
-    //   images[0].width,
-    //   images[0].naturalWidth,
-    //   images[0].height,
-    //   images[0].naturalHeight
-    // );
-    // console.log(
-    //   Array.from(images).reduce(
-    //     (sum, image) => sum + image.getBoundingClientRect().height,
-    //     0
-    //   )
-    // );
-  }
-  updatePositionAbsolute() {
-    const images = this.element.querySelectorAll("img");
-    for (let index = 0; index < images.length; ++index) {
-      if (index === 0) {
-        images[index].style.setProperty("top", "-200vh");
-        images[index].style.setProperty("position", "absolute");
-      } else {
-        images[index].style.removeProperty("top");
-        images[index].style.setProperty("position", "block");
-      }
-    }
-  }
-  updateScrollerMarginTop() {
-    const images = this.element.querySelectorAll("img");
-    if (images.length < 2) {
-      return;
-    }
-    this.element
-      .querySelector(".scroller")
-      .style.setProperty(
-        "margin-top",
-        `${-images[1].getBoundingClientRect().height}px`,
-      );
-  }
-  scroll() {
-    const images = this.element.querySelectorAll("img");
-    if (images.length < 2) {
-      return;
-    }
-    this.scrollAnimation.cancel();
-    const height = images[1].getBoundingClientRect().height;
-    const speedInPixelPerSecond = 10;
-    const duration = (height / speedInPixelPerSecond) * 1000;
-    this.scrollAnimation.effect.setKeyframes([
-      { marginTop: `${-height}px` },
-      { marginTop: `0px` },
-    ]);
-    this.scrollAnimation.effect.updateTiming({
-      duration: duration,
-      fill: "forwards",
-      easing: "linear",
-    });
-    this.scrollAnimation.play();
-  }
-}
-
-const recommender = new Recommender(new URL("../index.json", window.location));
-// const column = new Column(document.querySelector(".column"), recommender);
-const columns = document.querySelectorAll(".column");
 (async () => {
+  const recommender = new Recommender(
+    new URL("../index.json", window.location)
+  );
+  const rows = Array.from({ length: options.amountOfRows }, () => {
+    const row = document.body.appendChild(document.createElement("div"));
+    row.classList.add("row");
+    return row;
+  });
+  document.body.style.setProperty(
+    "grid-template-rows",
+    Array.from(
+      { length: options.amountOfRows },
+      () => `${100 / options.amountOfRows}vh`
+    ).join(" ")
+  );
   await recommender.update();
-  // columns.forEach((column) => {
-  //   scroller(column, recommender);
-  // });
-  // column.removeOutOfViewport();
-  // await column.fillColumn();
+  while (!options.stopIteration) {
+    await addImage(options, rows, recommender);
+  }
 })();
 
-// class Image {
-//   constructor(metadata) {
-//     this.width = metadata.resolution.width;
-//     this.height = metadata.resolution.height;
-//     this.unitHeight = this.height / this.width;
-//     this.element = document.body.appendChild(document.createElement("img"));
-//     this.element.src = new URL(
-//       `../images/${metadata.path}`,
-//       window.location
-//     );
-//     // this.element.style.display = "none";
-//     this.element.onload = () => {
-//       console.log("Loaded", this.element.src);
-//     };
-//     // this.animation = new Animation(
-//     //   new KeyframeEffect(this.element, null),
-//     //   document.timeline
-//     // );
-//   }
-//   place(top, left, width) {
-//     this.element.style.top = `${top}px`;
-//     this.element.style.left = `${left}px`;
-//     this.element.width = width;
-//     this.element.height = width * this.unitHeight;
-//   }
-// }
+async function addImage(options, rows, recommender) {
+  console.assert(options.allowedRelativeWidthFromCenterForAdditions < 0.5, {
+    options,
+    rows,
+  });
 
-// class Column {
-//   constructor(left, width, recommender) {
-//     this.left = left;
-//     this.width = width;
-//     this.preTop = this.recommender = recommender;
-//     this.images = [];
-//   }
-//   update() {
-//     const columnLeft = window.innerWidth * this.left;
-//     const columnWidth = window.innerWidth * this.width;
-//     let top = 0;
-//     for (const image of this.images) {
-//       image.place(top, columnLeft, columnWidth);
-//       top += image.unitHeight * columnWidth;
-//     }
-//     while (top < window.innerHeight) {
-//       const image = this.recommender.next();
-//       image.place(top, columnLeft, columnWidth);
-//       top += image.unitHeight * columnWidth;
-//       this.images.push(image);
-//     }
-//     // this.prependRecommendedImagesUntilFull();
-//   }
-//   prependRecommendedImagesUntilFull() {
-//     while (this.height() < window.innerHeight) {
-//       console.log("prepending...", this.height(), "<", window.innerHeight);
-//       const image = this.recommender.next();
-//       image.setWidth(window.innerWidth * this.width);
-//       this.images = [image, ...this.images];
-//       console.log("prepended:", this.height(), "<", window.innerHeight);
-//     }
-//   }
-//   height() {
-//     return this.images.reduce((sum, image) => sum + image.element.height, 0);
-//   }
-// }
+  const selectedRow = rows[Math.floor(Math.random() * rows.length)];
+  const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
 
-// const columns = [
-//   new Column(0, 0.25, recommender),
-//   new Column(0.25, 0.4, recommender),
-//   new Column(0.65, 0.2, recommender),
-//   new Column(0.85, 0.15, recommender),
-// ];
-// (async () => {
-//   await recommender.update();
-//   for (const column of columns) {
-//     column.update();
-//   }
-// })();
+  const image = await loadAndInsertImage(
+    options,
+    selectedRow,
+    imagesInRow,
+    recommender
+  );
+  const width = (20 / image.naturalHeight) * image.naturalWidth;
+  await animatePopUp(options, image, width);
+  await sleep(options.highlightDuration);
+  await Promise.all([
+    animatePopDown(options, image, width),
+    removeOutOfViewportImages(options, selectedRow),
+  ]);
+  resetStyle(image);
+}
 
-// const image = document.body.appendChild(document.createElement("img"));
-// image.src = "image.jpg";
-// image.naturalWidth = 500;
-// image.naturalHeight = 400;
-// image.style.top = "0.5vw";
-// image.style.left = "0.5vw";
-// image.style.width = "39vw";
-// image.style.height = `${(39 / 5) * 4}vw`;
-// const animation = new Animation(
-//   new KeyframeEffect(image, [{ top: "0.5vw" }, { top: "20vw" }], {
-//     duration: 1000,
-//     fill: "forwards",
-//   }),
-//   document.timeline
-// );
-// animation.finished.then(() => {
-//   console.log("committing styles...");
-//   animation.commitStyles();
-// });
+async function loadAndInsertImage(
+  options,
+  selectedRow,
+  imagesInRow,
+  recommender
+) {
+  let image = null;
+  if (imagesInRow.length > 0) {
+    const viewportWidth = window.innerWidth;
+    const imagesWithSpaceLeft = imagesInRow.filter((image) => {
+      const left = image.getBoundingClientRect().left;
+      const relativeWidth = options.allowedRelativeWidthFromCenterForAdditions;
+      return (
+        left >= (0.5 - relativeWidth) * viewportWidth &&
+        left <= (0.5 + relativeWidth) * viewportWidth
+      );
+    });
+    console.assert(imagesWithSpaceLeft.length > 0, {
+      options,
+      selectedRow,
+      imagesInRow,
+      viewportWidth,
+      imagesWithSpaceLeft,
+    });
+    const imageWithSpaceLeft =
+      imagesWithSpaceLeft[
+        Math.floor(Math.random() * imagesWithSpaceLeft.length)
+      ];
+    image = selectedRow.insertBefore(
+      document.createElement("img"),
+      imageWithSpaceLeft
+    );
+  } else {
+    image = selectedRow.appendChild(document.createElement("img"));
+  }
+  image.style.setProperty("box-shadow", "none");
+  image.style.setProperty("transform", "none");
+  image.style.setProperty("width", "0");
+  image.style.setProperty("z-index", "1");
+
+  await new Promise((resolve, reject) => {
+    image.addEventListener("load", () => resolve());
+    image.addEventListener("error", (error) => reject(error));
+    image.src = new URL(
+      `../images/${recommender.next().path}`,
+      window.location
+    );
+  });
+
+  // rect without scaling
+  const imageRectAfterAnimations = image.getBoundingClientRect();
+  const width =
+    (imageRectAfterAnimations.height / image.naturalHeight) *
+    image.naturalWidth;
+  imageRectAfterAnimations.x -= width / 2;
+  imageRectAfterAnimations.width = width;
+
+  // scaled rect
+  const scaledWidth = imageRectAfterAnimations.width * options.highlightScale;
+  const scaledHeight = imageRectAfterAnimations.height * options.highlightScale;
+  imageRectAfterAnimations.x -=
+    (scaledWidth - imageRectAfterAnimations.width) / 2;
+  imageRectAfterAnimations.width = scaledWidth;
+  imageRectAfterAnimations.y -=
+    (scaledHeight - imageRectAfterAnimations.height) / 2;
+  imageRectAfterAnimations.height = scaledHeight;
+
+  // changing transform origin
+  let verticalOrigin = "center";
+  if (imageRectAfterAnimations.top < 0) {
+    verticalOrigin = "top";
+  } else if (imageRectAfterAnimations.bottom > window.innerHeight) {
+    verticalOrigin = "bottom";
+  }
+  let horizontalOrigin = "center";
+  if (imageRectAfterAnimations.left < 0) {
+    horizontalOrigin = "left";
+  } else if (imageRectAfterAnimations.right > window.innerWidth) {
+    horizontalOrigin = "right";
+  }
+  image.style.setProperty(
+    "transform-origin",
+    `${verticalOrigin} ${horizontalOrigin}`
+  );
+
+  return image;
+}
+
+async function animatePopUp(options, image, width) {
+  const animation = image.animate(
+    [
+      { boxShadow: "0 0 1cm transparent", transform: "none", width: "0" },
+      {
+        boxShadow: "0 0 1cm #000000",
+        transform: `scale(${options.highlightScale})`,
+        width: `${width}vh`,
+      },
+    ],
+    {
+      duration: options.popUpDuration,
+      fill: "forwards",
+      easing: options.easing,
+    }
+  );
+  await animation.finished;
+  animation.commitStyles();
+}
+
+async function animatePopDown(options, image, width) {
+  const animation = image.animate(
+    [
+      {
+        boxShadow: "0 0 1cm #000000",
+        transform: `scale(${options.highlightScale})`,
+        width: `${width}vh`,
+      },
+      {
+        boxShadow: "0 0 1cm transparent",
+        transform: "none",
+        width: `${width}vh`,
+      },
+    ],
+    {
+      duration: options.popDownDuration,
+      fill: "forwards",
+      easing: options.easing,
+    }
+  );
+  await animation.finished;
+  animation.commitStyles();
+}
+
+async function removeOutOfViewportImages(options, selectedRow) {
+  const imagesOutOfViewport = Array.from(
+    selectedRow.querySelectorAll("img")
+  ).filter((image) => {
+    const boundingRect = image.getBoundingClientRect();
+    return boundingRect.right < 0 || boundingRect.left > window.innerWidth;
+  });
+
+  const animations = imagesOutOfViewport.map((image) => {
+    const width = image.getBoundingClientRect().width;
+    return image.animate([{ width: `${width}px` }, { width: "0" }], {
+      duration: options.popDownDuration,
+      fill: "forwards",
+      easing: options.easing,
+    });
+  });
+  for (const animation of animations) {
+    await animation.finished;
+    animation.commitStyles();
+  }
+
+  for (const image of imagesOutOfViewport) {
+    selectedRow.removeChild(image);
+  }
+}
+
+function resetStyle(image) {
+  image.style.removeProperty("box-shadow");
+  image.style.removeProperty("transform");
+  image.style.removeProperty("transform-origin");
+  image.style.removeProperty("width");
+  image.style.removeProperty("z-index");
+}
+
+function sleep(duration) {
+  return new Promise((resolve) => setTimeout(resolve, duration));
+}
