@@ -1,20 +1,21 @@
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, State},
+    http::StatusCode,
     routing::{get, post},
     Json, Router, Server,
 };
 use clap::Parser;
 use index::{Index, Indexer};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-use tokio::sync::RwLock;
+use time::{format_description::parse, OffsetDateTime};
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufWriter},
+    sync::RwLock,
+};
 use tower_http::services::ServeDir;
 
 mod index;
@@ -83,25 +84,49 @@ async fn main() -> Result<()> {
 }
 
 // test with
-// curl --location --request POST 'http://localhost:3000/upload/rohow2023' \
-//      --header 'Content-Type: multipart/form-data' \
-//      --form '0003.jpg=@/my_picture.jpg'
+// curl --location "http://localhost:3000/upload/rohow2023" --form "image=@/my_picture.jpg"
 async fn upload_image(
     State(configuration): State<Arc<Configuration>>,
-    Path(path): Path<PathBuf>,
     mut form_data: Multipart,
-) {
-    while let Some(field) = form_data.next_field().await.unwrap() {
-        let name = field.name().unwrap().to_string();
-        let data = field.bytes().await.unwrap();
-
-        let destination = configuration.storage.to_path_buf().join(&path).join(&name);
-        println!("Storing {name} in {}", destination.display());
-
-        let file = File::create(destination).unwrap();
-        let mut writer = BufWriter::new(file);
-        writer.write_all(&data).unwrap();
+) -> Result<(), (StatusCode, String)> {
+    while let Some(mut field) = form_data
+        .next_field()
+        .await
+        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?
+    {
+        let name = field
+            .name()
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing field name".to_string()))?;
+        match name {
+            "image" => {
+                let format = parse("[year][month][day]T[hour][minute][second]Z").unwrap();
+                let timestamp = OffsetDateTime::now_utc().format(&format).unwrap();
+                let file_name = if let Some(file_name) = field.file_name() {
+                    format!("{timestamp}_{file_name}")
+                } else {
+                    timestamp
+                };
+                let path = configuration.storage.join(file_name);
+                let file = File::create(&path)
+                    .await
+                    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+                let mut file = BufWriter::new(file);
+                while let Some(mut chunk) = field
+                    .chunk()
+                    .await
+                    .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?
+                {
+                    file.write_all_buf(&mut chunk)
+                        .await
+                        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+                }
+            }
+            _ => {
+                eprintln!("ignoring field {name}");
+            }
+        }
     }
+    Ok(())
 }
 
 async fn storage_index(State(index): State<Arc<RwLock<Index>>>) -> Json<Index> {
