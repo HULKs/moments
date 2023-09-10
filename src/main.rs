@@ -27,6 +27,9 @@ struct Arguments {
     port: u16,
     #[arg(long, default_value = "storage/")]
     storage: PathBuf,
+    // e.g., "foo"
+    #[arg(long)]
+    secret: String,
 }
 
 #[derive(Clone)]
@@ -43,14 +46,16 @@ async fn main() -> Result<()> {
     let index = Arc::new(RwLock::new(Index::default()));
     let indexer = Indexer::spawn(&configuration.storage, index.clone());
 
-    let app = Router::new()
-        .nest_service("/", ServeDir::new("frontend/"))
-        .nest_service("/images", ServeDir::new(&configuration.storage))
+    let images = Router::new()
         .route("/index.json", get(storage_index).with_state(index.clone()))
+        .fallback_service(ServeDir::new(&configuration.storage));
+    let app = Router::new()
+        .nest(&format!("/images/{}", arguments.secret), images)
         .route(
-            "/upload",
+            &format!("/upload/{}", arguments.secret),
             post(upload_image).with_state(configuration.clone()),
-        );
+        )
+        .fallback_service(ServeDir::new("frontend/"));
 
     let mut watcher = RecommendedWatcher::new(
         move |result| match result {
