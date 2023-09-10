@@ -1,3 +1,10 @@
+if (!window.location.hash) {
+  const newHash = prompt("Please enter the event's secret");
+  if (newHash !== null) {
+    window.location.hash = `#${newHash}`;
+  }
+}
+
 const baseDuration = 1250;
 const options = {
   highlightScale: 1.5,
@@ -8,6 +15,7 @@ const options = {
   easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
   amountOfRows: 5,
   stopIteration: false,
+  secret: window.location.hash.substring(1),
 };
 
 class Recommender {
@@ -28,8 +36,10 @@ class Recommender {
 }
 
 (async () => {
+  console.assert(options.secret, "No secret provided");
+
   const recommender = new Recommender(
-    new URL("../index.json", window.location)
+    new URL(`./images/${options.secret}/index.json`, window.location)
   );
   const rows = Array.from({ length: options.amountOfRows }, () => {
     const row = document.body.appendChild(document.createElement("div"));
@@ -118,7 +128,7 @@ async function loadAndInsertImage(
     image.addEventListener("load", () => resolve());
     image.addEventListener("error", (error) => reject(error));
     image.src = new URL(
-      `../images/${recommender.next().path}`,
+      `../images/${options.secret}/${recommender.next().path}`,
       window.location
     );
   });
