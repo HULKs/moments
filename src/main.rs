@@ -21,7 +21,7 @@ mod index;
 
 #[derive(Parser)]
 struct Arguments {
-    #[arg(long, default_value = "0.0.0.0")]
+    #[arg(long, default_value = "[::]")]
     host: String,
     #[arg(long, default_value = "3000")]
     port: u16,
