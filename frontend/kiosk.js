@@ -36,7 +36,9 @@ class Recommender {
 }
 
 (async () => {
-  console.assert(options.secret, "No secret provided");
+  if (!options.secret) {
+    throw new Error("No secret provided");
+  }
 
   const recommender = new Recommender(
     new URL(`./images/${options.secret}/index.json`, window.location)
@@ -60,10 +62,14 @@ class Recommender {
 })();
 
 async function addImage(options, rows, recommender) {
-  console.assert(options.allowedRelativeWidthFromCenterForAdditions < 0.5, {
-    options,
-    rows,
-  });
+  if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
+    throw new Error(
+      `options.allowedRelativeWidthFromCenterForAdditions >= 0.5, ${{
+        options,
+        rows,
+      }}`
+    );
+  }
 
   const selectedRow = rows[Math.floor(Math.random() * rows.length)];
   const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
@@ -101,13 +107,17 @@ async function loadAndInsertImage(
         left <= (0.5 + relativeWidth) * viewportWidth
       );
     });
-    console.assert(imagesWithSpaceLeft.length > 0, {
-      options,
-      selectedRow,
-      imagesInRow,
-      viewportWidth,
-      imagesWithSpaceLeft,
-    });
+    if (imagesWithSpaceLeft.length === 0) {
+      throw new Error(
+        `${{
+          options,
+          selectedRow,
+          imagesInRow,
+          viewportWidth,
+          imagesWithSpaceLeft,
+        }}`
+      );
+    }
     const imageWithSpaceLeft =
       imagesWithSpaceLeft[
         Math.floor(Math.random() * imagesWithSpaceLeft.length)
@@ -128,7 +138,7 @@ async function loadAndInsertImage(
     image.addEventListener("load", () => resolve());
     image.addEventListener("error", (error) => reject(error));
     image.src = new URL(
-      `../images/${options.secret}/${recommender.next().path}`,
+      `./images/${options.secret}/${recommender.next().path}`,
       window.location
     );
   });
