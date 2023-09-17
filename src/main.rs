@@ -2,19 +2,21 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use axum::{
-    extract::{Multipart, State},
+    extract::{
+        ws::{Message, WebSocket},
+        Multipart, State, WebSocketUpgrade,
+    },
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
-    Json, Router, Server,
+    Router, Server,
 };
 use clap::Parser;
-use index::{Index, Indexer};
-use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use index::Indexer;
 use time::{format_description::parse, OffsetDateTime};
 use tokio::{
     fs::File,
     io::{AsyncWriteExt, BufWriter},
-    sync::RwLock,
 };
 use tower_http::services::ServeDir;
 
@@ -22,7 +24,7 @@ mod index;
 
 #[derive(Parser)]
 struct Arguments {
-    #[arg(long, default_value = "[::]")]
+    #[arg(long, default_value = "0.0.0.0")]
     host: String,
     #[arg(long, default_value = "3000")]
     port: u16,
@@ -44,11 +46,10 @@ async fn main() -> Result<()> {
     let configuration = Arc::new(Configuration {
         storage: arguments.storage,
     });
-    let index = Arc::new(RwLock::new(Index::default()));
-    let indexer = Indexer::spawn(&configuration.storage, index.clone());
+    let indexer = Arc::new(Indexer::spawn(&configuration.storage).await?);
 
     let images = Router::new()
-        .route("/index.json", get(storage_index).with_state(index.clone()))
+        .route("/index", get(handle_websocket_upgrade).with_state(indexer))
         .fallback_service(ServeDir::new(&configuration.storage));
     let app = Router::new()
         .nest(&format!("/images/{}", arguments.secret), images)
@@ -57,20 +58,6 @@ async fn main() -> Result<()> {
             post(upload_image).with_state(configuration.clone()),
         )
         .fallback_service(ServeDir::new("frontend/"));
-
-    let mut watcher = RecommendedWatcher::new(
-        move |result| match result {
-            Err(error) => {
-                eprintln!("watch error: {error:?}");
-            }
-            _ => {
-                indexer.notify();
-            }
-        },
-        Config::default(),
-    )?;
-    // maybe debounce?
-    watcher.watch(&configuration.storage, RecursiveMode::Recursive)?;
 
     Server::bind(
         &format!("{}:{}", arguments.host, arguments.port)
@@ -81,6 +68,24 @@ async fn main() -> Result<()> {
     .await
     .context("failed to start server")?;
     Ok(())
+}
+
+async fn handle_websocket_upgrade(
+    upgrade: WebSocketUpgrade,
+    State(indexer): State<Arc<Indexer>>,
+) -> impl IntoResponse {
+    upgrade.on_upgrade(move |socket| handle_websocket(socket, indexer))
+}
+
+async fn handle_websocket(mut socket: WebSocket, indexer: Arc<Indexer>) {
+    let mut updates = indexer.updates.resubscribe();
+    let index = indexer.index().await;
+    let message = Message::Text(serde_json::to_string(&index).unwrap());
+    socket.send(message).await.unwrap();
+    while let Ok(update) = updates.recv().await {
+        let message = Message::Text(serde_json::to_string(&update).unwrap());
+        socket.send(message).await.unwrap();
+    }
 }
 
 // test with
@@ -127,9 +132,4 @@ async fn upload_image(
         }
     }
     Ok(())
-}
-
-async fn storage_index(State(index): State<Arc<RwLock<Index>>>) -> Json<Index> {
-    let index = index.read().await.clone();
-    Json(index)
 }
