@@ -151,6 +151,7 @@ async function loadAndInsertImage(
     image = selectedRow.appendChild(document.createElement("img"));
   }
   image.style.setProperty("box-shadow", "none");
+  image.style.setProperty("margin", "0 0");
   image.style.setProperty("transform", "none");
   image.style.setProperty("width", "0");
   image.style.setProperty("z-index", "1");
@@ -206,9 +207,15 @@ async function loadAndInsertImage(
 async function animatePopUp(options, image, width) {
   const animation = image.animate(
     [
-      { boxShadow: "0 0 1cm transparent", transform: "none", width: "0" },
+      {
+        boxShadow: "0 0 1cm transparent",
+        margin: "0 0",
+        transform: "none",
+        width: "0",
+      },
       {
         boxShadow: "0 0 1cm #000000",
+        margin: "0 0.0625cm",
         transform: `scale(${options.highlightScale})`,
         width: `${width}vh`,
       },
@@ -275,6 +282,7 @@ async function removeOutOfViewportImages(options, selectedRow) {
 
 function resetStyle(image) {
   image.style.removeProperty("box-shadow");
+  image.style.removeProperty("margin");
   image.style.removeProperty("transform");
   image.style.removeProperty("transform-origin");
   image.style.removeProperty("width");
