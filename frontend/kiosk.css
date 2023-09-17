@@ -23,7 +23,6 @@ body {
 img {
   display: block;
   object-fit: cover;
-  border-radius: 0.125cm;
   will-change: box-shadow, transform, width;
   height: 100%;
 }
