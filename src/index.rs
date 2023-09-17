@@ -1,65 +1,129 @@
 use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::Arc,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
+use notify::RecursiveMode;
+use notify_debouncer_mini::new_debouncer;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     fs::metadata,
-    spawn,
-    sync::{Notify, RwLock},
+    select, spawn,
+    sync::{broadcast, mpsc, oneshot, Notify},
 };
 use walkdir::WalkDir;
 
 #[derive(Error, Debug)]
-enum IndexError {
+pub enum IndexError {
     #[error("failed to read directory")]
     WalkDir(#[from] walkdir::Error),
     #[error("failed to read metadata")]
     Metadata(#[from] std::io::Error),
+    #[error("failed to watch directory")]
+    Watch(#[from] notify::Error),
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Index {
-    images: Vec<Image>,
+    pub images: HashSet<Image>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Image {
+#[derive(Clone, Debug, Serialize, Deserialize, Eq)]
+pub struct Image {
     path: PathBuf,
     modified: SystemTime,
 }
 
+impl Hash for Image {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.path.hash(state);
+    }
+}
+
+impl PartialEq for Image {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+}
+
 pub struct Indexer {
-    notifier: Arc<Notify>,
+    pub updates: broadcast::Receiver<Updates>,
+    index: mpsc::Sender<oneshot::Sender<Index>>,
 }
 
 impl Indexer {
-    pub fn spawn(storage: impl AsRef<Path>, index: Arc<RwLock<Index>>) -> Self {
+    pub async fn spawn(storage: impl AsRef<Path>) -> Result<Self, IndexError> {
+        let storage = storage.as_ref().to_path_buf();
         let notifier = Arc::new(Notify::new());
-        {
+        let mut debouncer = new_debouncer(Duration::from_secs(1), {
             let notifier = notifier.clone();
-            let storage = storage.as_ref().to_path_buf();
-            spawn(async move {
-                loop {
-                    notifier.notified().await;
-                    let images = collect_images(&storage).await.unwrap();
-                    index.write().await.images = images;
+            move |result| match result {
+                Ok(_) => {
+                    notifier.notify_one();
                 }
-            });
-        }
-        notifier.notify_one();
-        Self { notifier }
+                Err(error) => eprintln!("watch error {error:?}"),
+            }
+        })?;
+
+        debouncer
+            .watcher()
+            .watch(storage.as_ref(), RecursiveMode::Recursive)?;
+
+        let (updates_sender, updates_receiver) = broadcast::channel(10);
+        let (index_sender, mut index_receiver) = mpsc::channel::<oneshot::Sender<Index>>(10);
+
+        spawn(async move {
+            let _debouncer = debouncer;
+            let mut images = collect_images(&storage).await.unwrap();
+            loop {
+                select! {
+                    Some(sender) = index_receiver.recv() => {
+                        sender.send(Index { images: images.clone() }).unwrap();
+                    }
+                    _ = notifier.notified() => {
+                        let new_images = collect_images(&storage).await.unwrap();
+                        let updates = detect_updates(&images, &new_images);
+                        if !updates.additions.is_empty() || !updates.deletions.is_empty() {
+                            updates_sender.send(updates).unwrap();
+                        }
+                        images = new_images;
+                    }
+                }
+            }
+        });
+        Ok(Self {
+            updates: updates_receiver,
+            index: index_sender,
+        })
     }
 
-    pub fn notify(&self) {
-        self.notifier.notify_one();
+    pub async fn index(&self) -> Index {
+        let (sender, receiver) = oneshot::channel();
+        self.index.send(sender).await.unwrap();
+        receiver.await.unwrap()
     }
 }
 
-async fn collect_images(storage: impl AsRef<Path>) -> Result<Vec<Image>, IndexError> {
+#[derive(Debug, Clone, Serialize)]
+pub struct Updates {
+    pub additions: Vec<Image>,
+    pub deletions: Vec<Image>,
+}
+
+fn detect_updates(old: &HashSet<Image>, new: &HashSet<Image>) -> Updates {
+    let additions = new.difference(old).cloned().collect();
+    let deletions = old.difference(new).cloned().collect();
+    Updates {
+        additions,
+        deletions,
+    }
+}
+
+async fn collect_images(storage: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
     println!("indexing {}", storage.as_ref().display());
     // TODO: walkdir is not async
     let walker = WalkDir::new(&storage).into_iter();
@@ -73,7 +137,7 @@ async fn collect_images(storage: impl AsRef<Path>) -> Result<Vec<Image>, IndexEr
                         .is_some_and(|extension| extension == "jpg")
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let mut images = Vec::with_capacity(entries.len());
+    let mut images = HashSet::with_capacity(entries.len());
     for entry in &entries {
         if entry.file_type().is_dir() {
             continue;
@@ -81,7 +145,7 @@ async fn collect_images(storage: impl AsRef<Path>) -> Result<Vec<Image>, IndexEr
         let path = entry.path();
         let metadata = metadata(path).await?;
         let modified = metadata.modified()?;
-        images.push(Image {
+        images.insert(Image {
             path: path.strip_prefix(&storage).unwrap().to_path_buf(),
             modified,
         });
