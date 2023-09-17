@@ -21,6 +21,7 @@ const options = {
 class Recommender {
   constructor(url) {
     this.images = {};
+    this.sortedImages = [];
     this.imagesReceived = new Promise((resolve) => {
       this.resolveImagesReceived = resolve;
     });
@@ -35,6 +36,7 @@ class Recommender {
         for (const image of message.images) {
           this.images[image.path] = image.modified;
         }
+        this.sortedImages = Array.from(Object.keys(this.images)).toSorted();
         this.resolveImagesReceived();
       } else if (
         typeof message.additions === "object" &&
@@ -46,16 +48,16 @@ class Recommender {
         for (const image of message.deletions) {
           delete this.images[image.path];
         }
+        this.sortedImages = Array.from(Object.keys(this.images)).toSorted();
       } else {
         console.error(`Unexpected message ${message}`);
       }
     });
   }
-  waitForImagesReceived() {
-    return this.imagesReceived;
-  }
   next() {
-    return this.images[Math.floor(Math.random() * this.images.length)];
+    return this.sortedImages[
+      Math.floor(Math.random() * this.sortedImages.length)
+    ];
   }
 }
 
@@ -64,9 +66,14 @@ class Recommender {
     throw new Error("No secret provided");
   }
 
-  const recommender = new Recommender(
-    new URL(`./images/${options.secret}/index.json`, window.location)
+  const recommenderUrl = new URL(
+    `./images/${options.secret}/index`,
+    window.location
   );
+  recommenderUrl.protocol =
+    recommenderUrl.protocol === "http:" ? "ws:" : "wss:";
+  const recommender = new Recommender(recommenderUrl);
+  await recommender.imagesReceived;
   const rows = Array.from({ length: options.amountOfRows }, () => {
     const row = document.body.appendChild(document.createElement("div"));
     row.classList.add("row");
@@ -79,7 +86,6 @@ class Recommender {
       () => `${100 / options.amountOfRows}vh`
     ).join(" ")
   );
-  await recommender.update();
   await addImagesUntilScreenIsFull(options, rows, recommender);
   while (!options.stopIteration) {
     await addImage(options, rows, recommender);
@@ -187,7 +193,7 @@ async function loadAndInsertImage(
     image.addEventListener("load", () => resolve());
     image.addEventListener("error", (error) => reject(error));
     image.src = new URL(
-      `./images/${options.secret}/${recommender.next().path}`,
+      `./images/${options.secret}/${recommender.next()}`,
       window.location
     );
   });
