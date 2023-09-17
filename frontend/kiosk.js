@@ -20,12 +20,39 @@ const options = {
 
 class Recommender {
   constructor(url) {
-    this.url = url;
+    this.images = {};
+    this.imagesReceived = new Promise((resolve) => {
+      this.resolveImagesReceived = resolve;
+    });
+    this.webSocket = new WebSocket(url);
+    this.webSocket.addEventListener("close", () => {
+      alert("Server connection disconnected, please reload");
+    });
+    this.webSocket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      console.log(message);
+      if (typeof message.images === "object") {
+        for (const image of message.images) {
+          this.images[image.path] = image.modified;
+        }
+        this.resolveImagesReceived();
+      } else if (
+        typeof message.additions === "object" &&
+        typeof message.deletions === "object"
+      ) {
+        for (const image of message.additions) {
+          this.images[image.path] = image.modified;
+        }
+        for (const image of message.deletions) {
+          delete this.images[image.path];
+        }
+      } else {
+        console.error(`Unexpected message ${message}`);
+      }
+    });
   }
-  async update() {
-    const response = await fetch(this.url);
-    this.images = (await response.json()).images;
-    console.log(`Index contains ${this.images.length} images`);
+  waitForImagesReceived() {
+    return this.imagesReceived;
   }
   next() {
     return this.images[Math.floor(Math.random() * this.images.length)];
