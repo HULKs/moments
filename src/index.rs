@@ -131,9 +131,16 @@ async fn collect_images(storage: impl AsRef<Path>) -> Result<HashSet<Image>, Ind
         .filter_entry(|entry| {
             entry.file_type().is_dir()
                 || entry.file_type().is_file()
-                    && entry.path().extension().is_some_and(|extension| {
-                        matches!(extension.to_str(), Some("jpg") | Some("jpeg") | Some("png"))
-                    })
+                    && entry
+                        .path()
+                        .extension()
+                        .map(|extension| extension.to_ascii_lowercase())
+                        .is_some_and(|extension| {
+                            extension == "jpg"
+                                || extension == "jpeg"
+                                || extension == "png"
+                                || extension == "heic"
+                        })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let mut images = HashSet::with_capacity(entries.len());
