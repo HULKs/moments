@@ -21,7 +21,6 @@ const options = {
 class Recommender {
   constructor(url) {
     this.url = url;
-    this.nextIndex = 0;
   }
   async update() {
     const response = await fetch(this.url);
@@ -29,9 +28,7 @@ class Recommender {
     console.log(`Index contains ${this.images.length} images`);
   }
   next() {
-    const index = this.nextIndex;
-    this.nextIndex = (this.nextIndex + 1) % this.images.length;
-    return this.images[index];
+    return this.images[Math.floor(Math.random() * this.images.length)];
   }
 }
 
