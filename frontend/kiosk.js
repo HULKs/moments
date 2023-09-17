@@ -56,10 +56,34 @@ class Recommender {
     ).join(" ")
   );
   await recommender.update();
+  await addImagesUntilScreenIsFull(options, rows, recommender);
   while (!options.stopIteration) {
     await addImage(options, rows, recommender);
   }
 })();
+
+async function addImagesUntilScreenIsFull(options, rows, recommender) {
+  for (const selectedRow of rows) {
+    while (true) {
+      const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
+      const widthOfRow = imagesInRow.reduce((sum, image) => {
+        const boundingRect = image.getBoundingClientRect();
+        return sum + boundingRect.width;
+      }, 0);
+      if (widthOfRow >= window.innerWidth) {
+        break;
+      }
+
+      const image = await loadAndInsertImage(
+        options,
+        selectedRow,
+        imagesInRow,
+        recommender
+      );
+      resetStyle(image);
+    }
+  }
+}
 
 async function addImage(options, rows, recommender) {
   if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
