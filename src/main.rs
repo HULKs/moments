@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        Multipart, State, WebSocketUpgrade,
+        DefaultBodyLimit, Multipart, State, WebSocketUpgrade,
     },
     http::StatusCode,
     response::IntoResponse,
@@ -55,7 +55,9 @@ async fn main() -> Result<()> {
         .nest(&format!("/images/{}", arguments.secret), images)
         .route(
             &format!("/upload/{}", arguments.secret),
-            post(upload_image).with_state(configuration.clone()),
+            post(upload_image)
+                .with_state(configuration.clone())
+                .layer(DefaultBodyLimit::disable()),
         )
         .fallback_service(ServeDir::new("frontend/"));
 
