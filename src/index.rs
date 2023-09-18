@@ -56,8 +56,8 @@ pub struct Indexer {
 }
 
 impl Indexer {
-    pub async fn spawn(storage: impl AsRef<Path>) -> Result<Self, IndexError> {
-        let storage = storage.as_ref().to_path_buf();
+    pub async fn spawn(watch_path: impl AsRef<Path>) -> Result<Self, IndexError> {
+        let watch_path = watch_path.as_ref().to_path_buf();
         let notifier = Arc::new(Notify::new());
         let mut debouncer = new_debouncer(Duration::from_secs(1), {
             let notifier = notifier.clone();
@@ -71,21 +71,21 @@ impl Indexer {
 
         debouncer
             .watcher()
-            .watch(storage.as_ref(), RecursiveMode::Recursive)?;
+            .watch(watch_path.as_ref(), RecursiveMode::Recursive)?;
 
         let (updates_sender, updates_receiver) = broadcast::channel(10);
         let (index_sender, mut index_receiver) = mpsc::channel::<oneshot::Sender<Index>>(10);
 
         spawn(async move {
             let _debouncer = debouncer;
-            let mut images = collect_images(&storage).await.unwrap();
+            let mut images = collect_images(&watch_path).await.unwrap();
             loop {
                 select! {
                     Some(sender) = index_receiver.recv() => {
                         sender.send(Index { images: images.clone() }).unwrap();
                     }
                     _ = notifier.notified() => {
-                        let new_images = collect_images(&storage).await.unwrap();
+                        let new_images = collect_images(&watch_path).await.unwrap();
                         let updates = detect_updates(&images, &new_images);
                         if !updates.additions.is_empty() || !updates.deletions.is_empty() {
                             updates_sender.send(updates).unwrap();
@@ -123,10 +123,10 @@ fn detect_updates(old: &HashSet<Image>, new: &HashSet<Image>) -> Updates {
     }
 }
 
-async fn collect_images(storage: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
-    println!("indexing {}", storage.as_ref().display());
+async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
+    println!("indexing {}", storage_path.as_ref().display());
     // TODO: walkdir is not async
-    let walker = WalkDir::new(&storage).into_iter();
+    let walker = WalkDir::new(storage_path).into_iter();
     let entries = walker
         .filter_entry(|entry| {
             entry.file_type().is_dir()
@@ -151,8 +151,9 @@ async fn collect_images(storage: impl AsRef<Path>) -> Result<HashSet<Image>, Ind
         let path = entry.path();
         let metadata = metadata(path).await?;
         let modified = metadata.modified()?;
+
         images.insert(Image {
-            path: path.strip_prefix(&storage).unwrap().to_path_buf(),
+            path: path.strip_prefix(path).unwrap().to_path_buf(),
             modified,
         });
     }
