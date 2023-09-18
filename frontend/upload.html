@@ -8,12 +8,49 @@
     <meta name="theme-color" content="#388e3c" />
     <script src="upload.js" defer></script>
   </head>
-  <body>
+  <body class="state-authentication-error">
     <img id="selected" />
     <h1>moments</h1>
-    <div id="buttons">
-      <button id="select" disabled>Select</button>
-      <button id="upload" disabled>Upload</button>
+    <div id="authentication-error">
+      <div class="inner">Reload to reauthenticate</div>
+    </div>
+    <div id="select-first">
+      <button id="button-select-first" class="inner">Select</button>
+    </div>
+    <div id="ready-to-upload">
+      <button id="select-button-ready-to-upload" class="inner">Reselect</button>
+      <button id="upload-button-ready-to-upload" class="inner">Upload</button>
+    </div>
+    <div id="progress">
+      <img class="inner monkey" src="emojis/monkey.gif" />
+    </div>
+    <div id="select-another">
+      <div class="inner">
+        <img
+          src="emojis/white-heavy-check-mark_2705.png"
+          class="emoji"
+          alt="✅"
+        />
+        <img src="emojis/party-popper_1f389.png" class="emoji" alt="🎉" />
+        <img src="emojis/dash-symbol_1f4a8.png" class="emoji" alt="💨" />
+      </div>
+      <div class="inner">
+        <button id="button-select-another">Select</button>
+      </div>
+    </div>
+    <div id="select-another-after-error">
+      <div class="inner">
+        <img src="emojis/cross-mark_274c.png" class="emoji" alt="❌" />
+        <img
+          src="emojis/shocked-face-with-exploding-head_1f92f.png"
+          class="emoji"
+          alt="🤯"
+        />
+      </div>
+      <div id="error-reason" class="inner"></div>
+      <div class="inner">
+        <button id="button-select-another-after-error">Select</button>
+      </div>
     </div>
   </body>
 </html>

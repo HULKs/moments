@@ -1,5 +1,10 @@
-const selectButton = document.getElementById("select");
-const uploadButton = document.getElementById("upload");
+const selectButtons = [
+  "button-select-first",
+  "select-button-ready-to-upload",
+  "button-select-another",
+  "button-select-another-after-error",
+].map((id) => document.getElementById(id));
+const uploadButton = document.getElementById("upload-button-ready-to-upload");
 
 if (!window.location.hash) {
   const newHash = prompt("Please enter the event's secret");
@@ -8,14 +13,22 @@ if (!window.location.hash) {
   }
 }
 if (window.location.hash) {
-  selectButton.disabled = false;
+  document.body.className = "state-select-first";
 }
 
 let objectUrl = null;
 const selectedImage = document.getElementById("selected");
 selectedImage.onload = () => {
   URL.revokeObjectURL(objectUrl);
-  uploadButton.disabled = false;
+  selectedImage.style.setProperty("display", "block");
+  document.body.className = "state-ready-to-upload";
+};
+selectedImage.onerror = (error) => {
+  selectedImage.style.setProperty("display", "none");
+  selectedImage.removeAttribute("src");
+  console.error(error);
+  alert(`Failed to display image: ${error}`);
+  document.body.className = "state-select-first";
 };
 
 const filePicker = document.createElement("input");
@@ -25,20 +38,32 @@ filePicker.addEventListener("change", () => {
   selectedImage.src = URL.createObjectURL(filePicker.files[0]);
 });
 
-selectButton.addEventListener("click", () => {
-  filePicker.click();
-});
+selectButtons.forEach((selectButton) =>
+  selectButton.addEventListener("click", () => {
+    filePicker.click();
+  })
+);
 
 uploadButton.addEventListener("click", async () => {
   const form = new FormData();
   form.append("image", filePicker.files[0]);
-  await fetch(
-    new URL(`./upload/${window.location.hash.substring(1)}`, window.location),
-    {
-      method: "POST",
-      body: form,
+  try {
+    document.body.className = "state-progress";
+    const response = await fetch(
+      new URL(`./upload/${window.location.hash.substring(1)}`, window.location),
+      {
+        method: "POST",
+        body: form,
+      }
+    );
+    if (!response.ok) {
+      throw await response.text();
     }
-  );
+    document.body.className = "state-select-another";
+  } catch (error) {
+    document.body.className = "state-select-another-after-error";
+    document.getElementById("error-reason").innerText = error;
+  }
+  selectedImage.style.setProperty("display", "none");
   selectedImage.removeAttribute("src");
-  uploadButton.disabled = true;
 });
