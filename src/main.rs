@@ -109,8 +109,6 @@ async fn upload_image(
         .map(|file_name| format!("{timestamp}_{file_name}"))
         .unwrap_or(timestamp);
     let path = configuration.storage.join(file_name);
-    dbg!(&path);
-    dbg!(image.contents.path());
     copy(image.contents.path(), &path)
         .await
         .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
