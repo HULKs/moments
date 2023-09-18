@@ -380,11 +380,17 @@ async function removeOutOfViewportImages(options, selectedRow, recommender) {
 
   const animations = imagesOutOfViewport.map((image) => {
     const width = image.getBoundingClientRect().width;
-    return image.animate([{ width: `${width}px` }, { width: "0" }], {
+    return image.animate(
+      [
+        { margin: "0 0.0625cm", width: `${width}px` },
+        { margin: "0 0", width: "0" },
+      ],
+      {
       duration: options.popDownDuration,
       fill: "forwards",
       easing: options.easing,
-    });
+      }
+    );
   });
   for (const animation of animations) {
     await animation.finished;
