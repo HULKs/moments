@@ -11,6 +11,7 @@ body {
   display: grid;
   grid-template-columns: 100vw;
   row-gap: 0.125cm;
+  margin: 0.0625cm 0;
 }
 
 .row {

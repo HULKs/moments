@@ -160,10 +160,9 @@ class Recommender {
   });
   document.body.style.setProperty(
     "grid-template-rows",
-    Array.from(
-      { length: options.amountOfRows },
-      () => `${100 / options.amountOfRows}vh`
-    ).join(" ")
+    `repeat(${options.amountOfRows}, calc(${
+      100 / options.amountOfRows
+    }vh - 0.125cm))`
   );
   await addImagesUntilScreenIsFull(options, rows, recommender);
   while (!options.stopIteration) {
@@ -386,9 +385,9 @@ async function removeOutOfViewportImages(options, selectedRow, recommender) {
         { margin: "0 0", width: "0" },
       ],
       {
-      duration: options.popDownDuration,
-      fill: "forwards",
-      easing: options.easing,
+        duration: options.popDownDuration,
+        fill: "forwards",
+        easing: options.easing,
       }
     );
   });
