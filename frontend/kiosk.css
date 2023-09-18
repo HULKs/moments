@@ -29,4 +29,5 @@ img {
   will-change: box-shadow, margin, transform, width;
   height: 100%;
   margin: 0 0.0625cm;
+  box-sizing: content-box;
 }
