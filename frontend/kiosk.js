@@ -18,46 +18,125 @@ const options = {
   secret: window.location.hash.substring(1),
 };
 
+class AwaitableCondition {
+  constructor(conditionPredicate) {
+    this.conditionPredicate = conditionPredicate;
+    this.resolves = [];
+    this.isSet = false;
+  }
+  notifyOne() {
+    if (this.conditionPredicate()) {
+      const nextResolve = this.resolves.shift();
+      if (nextResolve !== undefined) {
+        nextResolve();
+      }
+    }
+  }
+  wait() {
+    return new Promise((resolve) => {
+      if (this.conditionPredicate()) {
+        resolve();
+      }
+      this.resolves.push(resolve);
+    });
+  }
+}
+
+class Bucket {
+  constructor() {
+    this.items = {};
+  }
+  add(key, value) {
+    this.items[key] = value;
+  }
+  delete(key) {
+    delete this.items[key];
+  }
+  contains(key) {
+    return key in this.items;
+  }
+  get length() {
+    return Array.from(Object.keys(this.items)).length;
+  }
+  popRandom() {
+    // we don't have any order requirement on the keys because we will randomly select anyway
+    const keys = Array.from(Object.keys(this.items));
+    if (keys.length === 0) {
+      return undefined;
+    }
+    const key = keys[Math.floor(Math.random() * keys.length)];
+    const value = this.items[key];
+    delete this.items[key];
+    return [key, value];
+  }
+}
+
 class Recommender {
   constructor(url) {
-    this.images = {};
-    this.sortedImages = [];
-    this.imagesReceived = new Promise((resolve) => {
-      this.resolveImagesReceived = resolve;
-    });
+    this.notYetShown = new Bucket();
+    this.alreadyShown = new Bucket();
+    this.currentlyShowing = new Bucket();
+    this.imagesAvailable = new AwaitableCondition(
+      () => this.notYetShown.length > 0 || this.alreadyShown.length > 0
+    );
+
     this.webSocket = new WebSocket(url);
     this.webSocket.addEventListener("close", () => {
       alert("Server connection disconnected, please reload");
     });
     this.webSocket.addEventListener("message", (event) => {
-      const message = JSON.parse(event.data);
-      console.log(message);
-      if (typeof message.images === "object") {
-        for (const image of message.images) {
-          this.images[image.path] = image.modified;
-        }
-        this.sortedImages = Array.from(Object.keys(this.images)).toSorted();
-        this.resolveImagesReceived();
-      } else if (
-        typeof message.additions === "object" &&
-        typeof message.deletions === "object"
-      ) {
-        for (const image of message.additions) {
-          this.images[image.path] = image.modified;
-        }
-        for (const image of message.deletions) {
-          delete this.images[image.path];
-        }
-        this.sortedImages = Array.from(Object.keys(this.images)).toSorted();
-      } else {
-        console.error(`Unexpected message ${message}`);
-      }
+      this.#handleMessage(JSON.parse(event.data));
     });
   }
-  next() {
-    return this.sortedImages[
-      Math.floor(Math.random() * this.sortedImages.length)
-    ];
+  #handleMessage(message) {
+    console.log(message);
+    if (typeof message.images === "object") {
+      for (const image of message.images) {
+        this.alreadyShown.add(image.path, image.modified);
+        this.imagesAvailable.notifyOne();
+      }
+    } else if (
+      typeof message.additions === "object" &&
+      typeof message.deletions === "object"
+    ) {
+      for (const image of message.additions) {
+        this.notYetShown.add(image.path, image.modified);
+        this.imagesAvailable.notifyOne();
+      }
+      for (const image of message.deletions) {
+        this.notYetShown.delete(image.path);
+        this.alreadyShown.delete(image.path);
+        this.currentlyShowing.delete(image.path);
+      }
+    } else {
+      console.error(`Unexpected message ${message}`);
+    }
+  }
+  async prolaag() {
+    await this.imagesAvailable.wait();
+
+    // console.log(
+    //   this.notYetShown.length,
+    //   this.alreadyShown.length,
+    //   this.currentlyShowing.length
+    // );
+
+    let image = this.notYetShown.popRandom();
+    if (image !== undefined) {
+      this.currentlyShowing.add(image[0], image[1]);
+      return { path: image[0], modified: image[1] };
+    }
+
+    image = this.alreadyShown.popRandom();
+    if (image !== undefined) {
+      this.currentlyShowing.add(image[0], image[1]);
+      return { path: image[0], modified: image[1] };
+    }
+  }
+  verhoog(image) {
+    this.currentlyShowing.delete(image.path);
+    this.alreadyShown.add(image.path, image.modified);
+    this.imagesAvailable.notifyOne();
   }
 }
 
@@ -139,7 +218,7 @@ async function addImage(options, rows, recommender) {
   await sleep(options.highlightDuration);
   await Promise.all([
     animatePopDown(options, image, width),
-    removeOutOfViewportImages(options, selectedRow),
+    removeOutOfViewportImages(options, selectedRow, recommender),
   ]);
   resetStyle(image);
 }
@@ -189,11 +268,15 @@ async function loadAndInsertImage(
   image.style.setProperty("width", "0");
   image.style.setProperty("z-index", "1");
 
+  const recommendedImage = await recommender.prolaag();
+  image.setAttribute("data-metadata", JSON.stringify(recommendedImage));
+
   await new Promise((resolve, reject) => {
     image.addEventListener("load", () => resolve());
     image.addEventListener("error", (error) => reject(error));
+    // console.log(recommendedImage);
     image.src = new URL(
-      `./images/${options.secret}/${recommender.next()}`,
+      `./images/${options.secret}/${recommendedImage.path}`,
       window.location
     );
   });
@@ -287,7 +370,7 @@ async function animatePopDown(options, image, width) {
   animation.commitStyles();
 }
 
-async function removeOutOfViewportImages(options, selectedRow) {
+async function removeOutOfViewportImages(options, selectedRow, recommender) {
   const imagesOutOfViewport = Array.from(
     selectedRow.querySelectorAll("img")
   ).filter((image) => {
@@ -309,6 +392,7 @@ async function removeOutOfViewportImages(options, selectedRow) {
   }
 
   for (const image of imagesOutOfViewport) {
+    recommender.verhoog(JSON.parse(image.getAttribute("data-metadata")));
     selectedRow.removeChild(image);
   }
 }
