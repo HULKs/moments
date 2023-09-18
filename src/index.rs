@@ -126,7 +126,7 @@ fn detect_updates(old: &HashSet<Image>, new: &HashSet<Image>) -> Updates {
 async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
     println!("indexing {}", storage_path.as_ref().display());
     // TODO: walkdir is not async
-    let walker = WalkDir::new(storage_path).into_iter();
+    let walker = WalkDir::new(&storage_path).into_iter();
     let entries = walker
         .filter_entry(|entry| {
             entry.file_type().is_dir()
@@ -153,7 +153,7 @@ async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>
         let modified = metadata.modified()?;
 
         images.insert(Image {
-            path: path.strip_prefix(path).unwrap().to_path_buf(),
+            path: path.strip_prefix(&storage_path).unwrap().to_path_buf(),
             modified,
         });
     }
