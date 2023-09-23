@@ -330,7 +330,9 @@ async function animatePopUp(options, image, width) {
         width: "0",
       },
       {
-        boxShadow: "0 0 1cm #000000",
+        boxShadow: `0 0 1cm #000000, 0 0 0 ${
+          1 / options.highlightScale
+        }px rgba(0, 0, 0, 0.25)`,
         margin: "0 0.0625cm",
         transform: `scale(${options.highlightScale})`,
         width: `${width}vh`,
