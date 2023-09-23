@@ -36,6 +36,7 @@ class AwaitableCondition {
     return new Promise((resolve) => {
       if (this.conditionPredicate()) {
         resolve();
+        return;
       }
       this.resolves.push(resolve);
     });
@@ -77,7 +78,7 @@ class Recommender {
     this.alreadyShown = new Bucket();
     this.currentlyShowing = new Bucket();
     this.imagesAvailable = new AwaitableCondition(
-      () => this.notYetShown.length > 0 || this.alreadyShown.length > 0,
+      () => this.notYetShown.length > 0 || this.alreadyShown.length > 0
     );
 
     this.webSocket = new WebSocket(url);
@@ -89,7 +90,7 @@ class Recommender {
     });
   }
   #handleMessage(message) {
-    console.log(message);
+    console.log("message", message);
     if (typeof message.images === "object") {
       for (const image of message.images) {
         this.alreadyShown.add(image.path, image.modified);
@@ -159,7 +160,7 @@ class Recommender {
     "grid-template-rows",
     `repeat(${options.amountOfRows}, calc(${
       100 / options.amountOfRows
-    }vh - 0.125cm))`,
+    }vh - 0.125cm))`
   );
   await addImagesUntilScreenIsFull(options, rows, recommender);
   while (!options.stopIteration) {
@@ -183,7 +184,7 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
         options,
         selectedRow,
         imagesInRow,
-        recommender,
+        recommender
       );
       resetStyle(image);
     }
@@ -196,7 +197,7 @@ async function addImage(options, rows, recommender) {
       `options.allowedRelativeWidthFromCenterForAdditions >= 0.5, ${{
         options,
         rows,
-      }}`,
+      }}`
     );
   }
 
@@ -207,7 +208,7 @@ async function addImage(options, rows, recommender) {
     options,
     selectedRow,
     imagesInRow,
-    recommender,
+    recommender
   );
   const width = (20 / image.naturalHeight) * image.naturalWidth;
   await animatePopUp(options, image, width);
@@ -223,7 +224,7 @@ async function loadAndInsertImage(
   options,
   selectedRow,
   imagesInRow,
-  recommender,
+  recommender
 ) {
   let image = null;
   if (imagesInRow.length > 0) {
@@ -244,7 +245,7 @@ async function loadAndInsertImage(
           imagesInRow,
           viewportWidth,
           imagesWithSpaceLeft,
-        }}`,
+        }}`
       );
     }
     const imageWithSpaceLeft =
@@ -253,7 +254,7 @@ async function loadAndInsertImage(
       ];
     image = selectedRow.insertBefore(
       document.createElement("img"),
-      imageWithSpaceLeft,
+      imageWithSpaceLeft
     );
   } else {
     image = selectedRow.appendChild(document.createElement("img"));
@@ -269,11 +270,14 @@ async function loadAndInsertImage(
 
   await new Promise((resolve, reject) => {
     image.addEventListener("load", () => resolve());
-    image.addEventListener("error", (error) => reject(error));
+    image.addEventListener("error", (error) => {
+      console.log(recommendedImage, error);
+      reject(error);
+    });
     // console.log(recommendedImage);
     image.src = new URL(
       `./images/${options.secret}/${recommendedImage.path}`,
-      window.location,
+      window.location
     );
   });
 
@@ -310,7 +314,7 @@ async function loadAndInsertImage(
   }
   image.style.setProperty(
     "transform-origin",
-    `${verticalOrigin} ${horizontalOrigin}`,
+    `${verticalOrigin} ${horizontalOrigin}`
   );
 
   return image;
@@ -336,7 +340,7 @@ async function animatePopUp(options, image, width) {
       duration: options.popUpDuration,
       fill: "forwards",
       easing: options.easing,
-    },
+    }
   );
   await animation.finished;
   animation.commitStyles();
@@ -360,7 +364,7 @@ async function animatePopDown(options, image, width) {
       duration: options.popDownDuration,
       fill: "forwards",
       easing: options.easing,
-    },
+    }
   );
   await animation.finished;
   animation.commitStyles();
@@ -368,7 +372,7 @@ async function animatePopDown(options, image, width) {
 
 async function removeOutOfViewportImages(options, selectedRow, recommender) {
   const imagesOutOfViewport = Array.from(
-    selectedRow.querySelectorAll("img"),
+    selectedRow.querySelectorAll("img")
   ).filter((image) => {
     const boundingRect = image.getBoundingClientRect();
     return boundingRect.right < 0 || boundingRect.left > window.innerWidth;
@@ -385,7 +389,7 @@ async function removeOutOfViewportImages(options, selectedRow, recommender) {
         duration: options.popDownDuration,
         fill: "forwards",
         easing: options.easing,
-      },
+      }
     );
   });
   for (const animation of animations) {
