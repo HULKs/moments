@@ -19,6 +19,7 @@ mod index;
 mod upload;
 mod websocket;
 
+/// A simple image gallery server
 #[derive(Parser)]
 struct Arguments {
     /// host to listen on
