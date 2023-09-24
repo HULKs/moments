@@ -45,7 +45,7 @@ struct Arguments {
     jpeg_image_quality: u8,
     /// the maximum size of a request body in bytes, which results in the maximum size an uploaded
     /// image can have
-    #[arg(long, default_value = "16_777_216")]
+    #[arg(long, default_value = "16777216")]
     max_request_body_size: usize,
 }
 
