@@ -124,7 +124,6 @@ fn detect_updates(old: &HashSet<Image>, new: &HashSet<Image>) -> Updates {
 }
 
 async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
-    println!("indexing {}", storage_path.as_ref().display());
     // TODO: walkdir is not async
     let walker = WalkDir::new(&storage_path).into_iter();
     let entries = walker
