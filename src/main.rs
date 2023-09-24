@@ -7,7 +7,7 @@ use axum::{
     Router, Server,
 };
 use clap::Parser;
-use images::cache_and_serve;
+use images::serve_and_cache;
 use index::Indexer;
 use tokio::fs::create_dir_all;
 use tower_http::services::ServeDir;
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route_service(
             &format!("/images/{}/*file_name", arguments.secret),
-            get(cache_and_serve).with_state(configuration.clone()),
+            get(serve_and_cache).with_state(configuration.clone()),
         )
         .route(
             &format!("/index/{}", arguments.secret),

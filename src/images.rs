@@ -18,7 +18,7 @@ use tokio::{
 
 use crate::Configuration;
 
-pub async fn cache_and_serve(
+pub async fn serve_and_cache(
     Path(file_path): Path<String>,
     State(configuration): State<Arc<Configuration>>,
 ) -> Result<Vec<u8>, ServeError> {
