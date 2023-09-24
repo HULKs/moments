@@ -21,23 +21,39 @@ mod websocket;
 
 #[derive(Parser)]
 struct Arguments {
+    /// host to listen on
     #[arg(long, default_value = "0.0.0.0")]
     host: String,
+    /// port to listen on
     #[arg(long, default_value = "3000")]
     port: u16,
+    /// path to directory where uploaded images are stored
     #[arg(long, default_value = "storage/")]
     storage: PathBuf,
+    /// path to directory where cached images are stored
     #[arg(long, default_value = "cache/")]
     cache: PathBuf,
-    // e.g., "foo"
+    /// a secret used to authenticate requests, e.g. the name of the event
     #[arg(long)]
     secret: String,
+    /// Maximum size of longest edge of cached images in pixels
+    #[arg(long, default_value = "1000")]
+    max_cached_image_size: u32,
+    /// JPEG image quality
+    #[arg(long, default_value = "80")]
+    jpeg_image_quality: u8,
+    /// the maximum size of a request body in bytes, which results in the maximum size an uploaded
+    /// image can have
+    #[arg(long, default_value = "16_777_216")]
+    max_request_body_size: usize,
 }
 
 #[derive(Clone)]
 pub struct Configuration {
     storage: PathBuf,
     cache: PathBuf,
+    max_cached_image_size: u32,
+    jpeg_image_quality: u8,
 }
 
 #[tokio::main]
@@ -46,6 +62,8 @@ async fn main() -> Result<()> {
     let configuration = Arc::new(Configuration {
         storage: arguments.storage,
         cache: arguments.cache,
+        max_cached_image_size: arguments.max_cached_image_size,
+        jpeg_image_quality: arguments.jpeg_image_quality,
     });
     create_dir_all(&configuration.storage)
         .await
@@ -68,7 +86,7 @@ async fn main() -> Result<()> {
             &format!("/upload/{}", arguments.secret),
             post(upload_image)
                 .with_state(configuration.clone())
-                .layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+                .layer(DefaultBodyLimit::max(arguments.max_request_body_size)),
         )
         .fallback_service(ServeDir::new("frontend/"));
 

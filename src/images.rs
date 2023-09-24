@@ -31,7 +31,13 @@ pub async fn cache_and_serve(
         return Ok(buffer);
     }
 
-    let image = load_and_resize(&file_path, &configuration.storage).await?;
+    let image = load_and_resize(
+        &file_path,
+        &configuration.storage,
+        configuration.max_cached_image_size,
+        configuration.jpeg_image_quality,
+    )
+    .await?;
 
     create_dir_all(cache_path.parent().unwrap()).await?;
     File::create(&cache_path)
@@ -80,6 +86,8 @@ impl IntoResponse for ServeError {
 async fn load_and_resize(
     file_path: &str,
     storage: impl AsRef<path::Path>,
+    max_size: u32,
+    jpeg_image_quality: u8,
 ) -> Result<Vec<u8>, ServeError> {
     let storage_path = storage.as_ref().to_owned().join(file_path);
 
@@ -96,9 +104,9 @@ async fn load_and_resize(
 
     let encoded_image = spawn_blocking(move || -> Result<_, ImageError> {
         let image = image::load_from_memory(&buffer)?;
-        let resized_image = image.resize(1000, 1000, FilterType::Lanczos3);
+        let resized_image = image.resize(max_size, max_size, FilterType::Lanczos3);
         let mut encoded_image = Vec::with_capacity(buffer.len());
-        let encoder = JpegEncoder::new_with_quality(&mut encoded_image, 80);
+        let encoder = JpegEncoder::new_with_quality(&mut encoded_image, jpeg_image_quality);
         resized_image.write_with_encoder(encoder)?;
         Ok(encoded_image)
     })
