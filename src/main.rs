@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
         .await
         .context("failed to populate cache")?;
 
-    let indexer = Arc::new(Indexer::spawn(&configuration.cache).await?);
+    let indexer = Arc::new(Indexer::spawn(&configuration.storage).await?);
 
     let app = Router::new()
         .nest_service(
