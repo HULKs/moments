@@ -34,8 +34,8 @@ pub struct Index {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq)]
 pub struct Image {
-    path: PathBuf,
-    modified: SystemTime,
+    pub path: PathBuf,
+    pub modified: SystemTime,
 }
 
 impl Hash for Image {
@@ -123,7 +123,7 @@ fn detect_updates(old: &HashSet<Image>, new: &HashSet<Image>) -> Updates {
     }
 }
 
-async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
+pub async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>, IndexError> {
     // TODO: walkdir is not async
     let walker = WalkDir::new(&storage_path).into_iter();
     let entries = walker
@@ -135,10 +135,7 @@ async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Image>
                         .extension()
                         .map(|extension| extension.to_ascii_lowercase())
                         .is_some_and(|extension| {
-                            extension == "jpg"
-                                || extension == "jpeg"
-                                || extension == "png"
-                                || extension == "heic"
+                            extension == "jpg" || extension == "jpeg" || extension == "png"
                         })
         })
         .collect::<Result<Vec<_>, _>>()?;
