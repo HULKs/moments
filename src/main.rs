@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use axum::{
@@ -7,14 +7,16 @@ use axum::{
     Router, Server,
 };
 use clap::Parser;
-use images::serve_and_cache;
-use index::Indexer;
-use tokio::fs::create_dir_all;
+use index::{collect_images, Indexer};
+use log::info;
+use tokio::{
+    fs::{create_dir_all, try_exists, File},
+    io::AsyncWriteExt,
+};
 use tower_http::services::ServeDir;
-use upload::upload_image;
+use upload::{load_and_resize, upload_image};
 use websocket::handle_websocket_upgrade;
 
-mod images;
 mod index;
 mod upload;
 mod websocket;
@@ -59,6 +61,8 @@ pub struct Configuration {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let arguments = Arguments::parse();
     let configuration = Arc::new(Configuration {
         storage: arguments.storage,
@@ -66,18 +70,25 @@ async fn main() -> Result<()> {
         max_cached_image_size: arguments.max_cached_image_size,
         jpeg_image_quality: arguments.jpeg_image_quality,
     });
+
     create_dir_all(&configuration.storage)
         .await
         .context("failed to create storage directory")?;
     create_dir_all(&configuration.cache)
         .await
         .context("failed to create cache directory")?;
-    let indexer = Arc::new(Indexer::spawn(&configuration.storage).await?);
+
+    info!("Populating cache...");
+    populate_cache(&configuration)
+        .await
+        .context("failed to populate cache")?;
+
+    let indexer = Arc::new(Indexer::spawn(&configuration.cache).await?);
 
     let app = Router::new()
-        .route_service(
-            &format!("/images/{}/*file_name", arguments.secret),
-            get(serve_and_cache).with_state(configuration.clone()),
+        .nest_service(
+            &format!("/images/{}", arguments.secret),
+            ServeDir::new(&configuration.cache),
         )
         .route(
             &format!("/index/{}", arguments.secret),
@@ -91,13 +102,40 @@ async fn main() -> Result<()> {
         )
         .fallback_service(ServeDir::new("frontend/"));
 
-    Server::bind(
-        &format!("{}:{}", arguments.host, arguments.port)
-            .parse()
-            .context("failed to parse host and port")?,
-    )
-    .serve(app.into_make_service())
-    .await
-    .context("failed to start server")?;
+    let address: SocketAddr = format!("{}:{}", arguments.host, arguments.port)
+        .parse()
+        .context("failed to parse host and port")?;
+
+    info!("Serving at {address}");
+    Server::bind(&address)
+        .serve(app.into_make_service())
+        .await
+        .context("failed to start server")?;
+    Ok(())
+}
+
+async fn populate_cache(configuration: &Configuration) -> Result<()> {
+    let images = collect_images(&configuration.storage)
+        .await
+        .context("failed to index storage")?;
+    for image in images {
+        let storage_path = configuration.storage.join(&image.path);
+        let cache_path = configuration.cache.join(&image.path);
+        if let Ok(true) = try_exists(&cache_path).await {
+            continue;
+        }
+        let resized_image = load_and_resize(
+            &storage_path,
+            configuration.max_cached_image_size,
+            configuration.jpeg_image_quality,
+        )
+        .await
+        .context("failed to resize image")?;
+
+        File::create(&cache_path)
+            .await?
+            .write_all(&resized_image)
+            .await?;
+    }
     Ok(())
 }
