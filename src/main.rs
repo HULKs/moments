@@ -7,6 +7,7 @@ use axum::{
     Router, Server,
 };
 use clap::Parser;
+use env_logger::Env;
 use index::{collect_images, Indexer};
 use log::info;
 use tokio::{
@@ -61,7 +62,7 @@ pub struct Configuration {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     let arguments = Arguments::parse();
     let configuration = Arc::new(Configuration {
