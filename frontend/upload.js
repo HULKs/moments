@@ -41,7 +41,7 @@ filePicker.addEventListener("change", () => {
 selectButtons.forEach((selectButton) =>
   selectButton.addEventListener("click", () => {
     filePicker.click();
-  })
+  }),
 );
 
 uploadButton.addEventListener("click", async () => {
@@ -50,11 +50,11 @@ uploadButton.addEventListener("click", async () => {
   try {
     document.body.className = "state-progress";
     const response = await fetch(
-      new URL(`./upload/${window.location.hash.substring(1)}`, window.location),
+      new URL(`./${window.location.hash.substring(1)}/upload`, window.location),
       {
         method: "POST",
         body: form,
-      }
+      },
     );
     if (!response.ok) {
       throw await response.text();

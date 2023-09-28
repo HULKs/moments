@@ -87,15 +87,15 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .nest_service(
-            &format!("/images/{}", arguments.secret),
+            &format!("/{}/images", arguments.secret),
             ServeDir::new(&configuration.cache),
         )
         .route(
-            &format!("/index/{}", arguments.secret),
+            &format!("/{}/index", arguments.secret),
             get(handle_websocket_upgrade).with_state(indexer),
         )
         .route(
-            &format!("/upload/{}", arguments.secret),
+            &format!("/{}/upload", arguments.secret),
             post(upload_image)
                 .with_state(configuration.clone())
                 .layer(DefaultBodyLimit::max(arguments.max_request_body_size)),
