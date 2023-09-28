@@ -6,18 +6,17 @@ use axum::{
     routing::{get, post},
     Router, Server,
 };
+use cache::cache_image;
 use clap::Parser;
 use env_logger::Env;
 use index::{collect_images, Indexer};
 use log::info;
-use tokio::{
-    fs::{create_dir_all, try_exists, File},
-    io::AsyncWriteExt,
-};
+use tokio::fs::{create_dir_all, try_exists};
 use tower_http::services::ServeDir;
-use upload::{load_and_resize, upload_image};
+use upload::upload_image;
 use websocket::handle_websocket_upgrade;
 
+mod cache;
 mod index;
 mod upload;
 mod websocket;
@@ -125,18 +124,14 @@ async fn populate_cache(configuration: &Configuration) -> Result<()> {
         if let Ok(true) = try_exists(&cache_path).await {
             continue;
         }
-        let resized_image = load_and_resize(
+        cache_image(
             &storage_path,
+            &cache_path,
             configuration.max_cached_image_size,
             configuration.jpeg_image_quality,
         )
         .await
-        .context("failed to resize image")?;
-
-        File::create(&cache_path)
-            .await?
-            .write_all(&resized_image)
-            .await?;
+        .context("failed to cache image")?;
     }
     Ok(())
 }
