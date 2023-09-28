@@ -11,7 +11,7 @@ use clap::Parser;
 use env_logger::Env;
 use index::{collect_images, Indexer};
 use log::info;
-use tokio::fs::{create_dir_all, try_exists};
+use tokio::fs::create_dir_all;
 use tower_http::services::ServeDir;
 use upload::upload_image;
 use websocket::handle_websocket_upgrade;
@@ -19,6 +19,7 @@ use websocket::handle_websocket_upgrade;
 mod cache;
 mod index;
 mod upload;
+mod watcher;
 mod websocket;
 
 /// A simple image gallery server
@@ -115,15 +116,10 @@ async fn main() -> Result<()> {
 }
 
 async fn populate_cache(configuration: &Configuration) -> Result<()> {
-    let images = collect_images(&configuration.storage)
-        .await
-        .context("failed to index storage")?;
+    let images = collect_images(&configuration.storage).context("failed to index storage")?;
     for image in images {
         let storage_path = configuration.storage.join(&image.path);
         let cache_path = configuration.cache.join(&image.path);
-        if let Ok(true) = try_exists(&cache_path).await {
-            continue;
-        }
         cache_image(
             &storage_path,
             &cache_path,
