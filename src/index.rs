@@ -114,28 +114,17 @@ fn compute_changes(old: &HashSet<Image>, new: &HashSet<Image>) -> Changes {
 pub fn collect_images(path: impl AsRef<Path>) -> Result<HashSet<Image>, walkdir::Error> {
     // TODO: walkdir is not async
     let walker = WalkDir::new(&path).into_iter();
-    let entries = walker
-        .filter_entry(|entry| {
-            entry.file_type().is_dir()
-                || entry.file_type().is_file()
-                    && entry
-                        .path()
-                        .extension()
-                        .map(|extension| extension.to_ascii_lowercase())
-                        .is_some_and(|extension| {
-                            extension == "jpg" || extension == "jpeg" || extension == "png"
-                        })
+    let images = walker
+        .filter_map(|entry| match entry {
+            Ok(entry) if entry.file_type().is_dir() => None,
+            Ok(entry) => {
+                let stripped_path = entry.path().strip_prefix(&path).unwrap().to_path_buf();
+                Some(Ok(Image {
+                    path: stripped_path,
+                }))
+            }
+            Err(error) => Some(Err(error)),
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut images = HashSet::with_capacity(entries.len());
-    for entry in &entries {
-        if entry.file_type().is_dir() {
-            continue;
-        }
-
-        images.insert(Image {
-            path: entry.path().strip_prefix(&path).unwrap().to_path_buf(),
-        });
-    }
+        .collect::<Result<HashSet<_>, _>>()?;
     Ok(images)
 }
