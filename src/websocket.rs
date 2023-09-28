@@ -18,7 +18,7 @@ pub async fn handle_websocket_upgrade(
 }
 
 pub async fn handle_websocket(mut socket: WebSocket, indexer: Arc<Indexer>) {
-    let mut updates = indexer.updates.resubscribe();
+    let mut updates = indexer.changes.resubscribe();
     let index = indexer.index().await;
     let message = Message::Text(serde_json::to_string(&index).unwrap());
     socket.send(message).await.unwrap();

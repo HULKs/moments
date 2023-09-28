@@ -2,7 +2,7 @@ use std::path::Path;
 
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, ImageError};
 use tokio::{
-    fs::File,
+    fs::{try_exists, File},
     io::{AsyncReadExt, AsyncWriteExt, BufReader},
     task::spawn_blocking,
 };
@@ -13,6 +13,9 @@ pub async fn cache_image(
     max_size: u32,
     jpeg_image_quality: u8,
 ) -> Result<(), ImageError> {
+    if let Ok(true) = try_exists(&destination).await {
+        return Ok(());
+    }
     let file = File::open(&source).await?;
     let mut buffer = Vec::with_capacity(file.metadata().await?.len() as usize);
     BufReader::new(file).read_to_end(&mut buffer).await?;
