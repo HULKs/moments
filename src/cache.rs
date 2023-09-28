@@ -8,12 +8,12 @@ use tokio::{
 };
 
 pub async fn cache_image(
-    from: impl AsRef<Path>,
-    to: impl AsRef<Path>,
+    source: impl AsRef<Path>,
+    destination: impl AsRef<Path>,
     max_size: u32,
     jpeg_image_quality: u8,
 ) -> Result<(), ImageError> {
-    let file = File::open(&from).await?;
+    let file = File::open(&source).await?;
     let mut buffer = Vec::with_capacity(file.metadata().await?.len() as usize);
     BufReader::new(file).read_to_end(&mut buffer).await?;
 
@@ -22,7 +22,10 @@ pub async fn cache_image(
             .await
             .unwrap()?;
 
-    File::create(&to).await?.write_all(&encoded_image).await?;
+    File::create(&destination)
+        .await?
+        .write_all(&encoded_image)
+        .await?;
     Ok(())
 }
 

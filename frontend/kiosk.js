@@ -93,7 +93,7 @@ class Recommender {
     console.log("message", message);
     if (typeof message.images === "object") {
       for (const image of message.images) {
-        this.alreadyShown.add(image.path, image.modified);
+        this.alreadyShown.add(image.path);
         this.imagesAvailable.notifyOne();
       }
     } else if (
@@ -101,7 +101,7 @@ class Recommender {
       typeof message.deletions === "object"
     ) {
       for (const image of message.additions) {
-        this.notYetShown.add(image.path, image.modified);
+        this.notYetShown.add(image.path);
         this.imagesAvailable.notifyOne();
       }
       for (const image of message.deletions) {
@@ -125,18 +125,18 @@ class Recommender {
     let image = this.notYetShown.popRandom();
     if (image !== undefined) {
       this.currentlyShowing.add(image[0], image[1]);
-      return { path: image[0], modified: image[1] };
+      return { path: image[0] };
     }
 
     image = this.alreadyShown.popRandom();
     if (image !== undefined) {
       this.currentlyShowing.add(image[0], image[1]);
-      return { path: image[0], modified: image[1] };
+      return { path: image[0] };
     }
   }
   verhoog(image) {
     this.currentlyShowing.delete(image.path);
-    this.alreadyShown.add(image.path, image.modified);
+    this.alreadyShown.add(image.path);
     this.imagesAvailable.notifyOne();
   }
 }

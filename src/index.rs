@@ -3,7 +3,7 @@ use std::{
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use notify::RecursiveMode;
@@ -11,7 +11,6 @@ use notify_debouncer_mini::new_debouncer;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
-    fs::metadata,
     select, spawn,
     sync::{broadcast, mpsc, oneshot, Notify},
 };
@@ -35,7 +34,6 @@ pub struct Index {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq)]
 pub struct Image {
     pub path: PathBuf,
-    pub modified: SystemTime,
 }
 
 impl Hash for Image {
@@ -145,12 +143,9 @@ pub async fn collect_images(storage_path: impl AsRef<Path>) -> Result<HashSet<Im
             continue;
         }
         let path = entry.path();
-        let metadata = metadata(path).await?;
-        let modified = metadata.modified()?;
 
         images.insert(Image {
             path: path.strip_prefix(&storage_path).unwrap().to_path_buf(),
-            modified,
         });
     }
     Ok(images)
