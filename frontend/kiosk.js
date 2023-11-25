@@ -143,6 +143,7 @@ class Recommender {
 
 (async () => {
   if (!options.secret) {
+    document.body.style.setProperty("background-color", "red");
     throw { message: "No secret provided" };
   }
 
@@ -164,7 +165,11 @@ class Recommender {
   );
   await addImagesUntilScreenIsFull(options, rows, recommender);
   while (!options.stopIteration) {
-    await addImage(options, rows, recommender);
+    try {
+      await addImage(options, rows, recommender);
+    } catch (error) {
+      console.error(error);
+    }
   }
 })();
 
@@ -180,19 +185,25 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
         break;
       }
 
-      const image = await loadAndInsertImage(
-        options,
-        selectedRow,
-        imagesInRow,
-        recommender,
-      );
-      resetStyle(image);
+      try {
+        const image = await loadAndInsertImage(
+          options,
+          selectedRow,
+          imagesInRow,
+          recommender
+        );
+        resetStyle(image);
+      } catch (error) {
+        console.error(error);
+        continue;
+      }
     }
   }
 }
 
 async function addImage(options, rows, recommender) {
   if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
+    document.body.style.setProperty("background-color", "red");
     throw {
       message: "options.allowedRelativeWidthFromCenterForAdditions >= 0.5",
       options,
@@ -237,6 +248,7 @@ async function loadAndInsertImage(
       );
     });
     if (imagesWithSpaceLeft.length === 0) {
+      document.body.style.setProperty("background-color", "red");
       throw {
         options,
         selectedRow,
@@ -268,7 +280,10 @@ async function loadAndInsertImage(
   await new Promise((resolve, reject) => {
     image.addEventListener("load", () => resolve());
     image.addEventListener("error", (error) => {
-      console.log(recommendedImage, error);
+      document.body.style.setProperty("background-color", "red");
+      // intentionally not calling recommender.verhoog() to keeping this image from being recommended again
+      console.error(recommendedImage, error);
+      selectedRow.removeChild(image);
       reject(error);
     });
     // console.log(recommendedImage);
