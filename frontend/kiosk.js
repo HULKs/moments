@@ -143,7 +143,7 @@ class Recommender {
 
 (async () => {
   if (!options.secret) {
-    throw new Error("No secret provided");
+    throw { message: "No secret provided" };
   }
 
   const recommenderUrl = new URL(`./${options.secret}/index`, window.location);
@@ -193,12 +193,11 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
 
 async function addImage(options, rows, recommender) {
   if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
-    throw new Error(
-      `options.allowedRelativeWidthFromCenterForAdditions >= 0.5, ${{
-        options,
-        rows,
-      }}`,
-    );
+    throw {
+      message: "options.allowedRelativeWidthFromCenterForAdditions >= 0.5",
+      options,
+      rows,
+    };
   }
 
   const selectedRow = rows[Math.floor(Math.random() * rows.length)];
@@ -238,15 +237,13 @@ async function loadAndInsertImage(
       );
     });
     if (imagesWithSpaceLeft.length === 0) {
-      throw new Error(
-        `${{
-          options,
-          selectedRow,
-          imagesInRow,
-          viewportWidth,
-          imagesWithSpaceLeft,
-        }}`,
-      );
+      throw {
+        options,
+        selectedRow,
+        imagesInRow,
+        viewportWidth,
+        imagesWithSpaceLeft,
+      };
     }
     const imageWithSpaceLeft =
       imagesWithSpaceLeft[
