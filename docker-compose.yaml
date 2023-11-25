@@ -1,0 +1,11 @@
+version: "3"
+services:
+  moments:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./storage:/moments/storage
+      - ./cache:/moments/cache
+    command: moments --secret YOUR_SECRET_GOES_HERE
+    ports:
+      - "3000:3000"
