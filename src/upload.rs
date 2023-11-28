@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     extract::State,
@@ -12,7 +12,11 @@ use thiserror::Error;
 use time::{format_description::parse, OffsetDateTime};
 use tokio::fs::copy;
 
-use crate::{cache::cache_image, Configuration};
+use crate::{
+    cache::cache_image,
+    index::{Image, IndexError, Indexer},
+    Configuration,
+};
 
 #[derive(TryFromMultipart)]
 pub struct UploadImageRequest {
@@ -21,7 +25,7 @@ pub struct UploadImageRequest {
 }
 
 pub async fn upload_image(
-    State(configuration): State<Arc<Configuration>>,
+    State((configuration, indexer)): State<(Arc<Configuration>, Arc<Indexer>)>,
     TypedMultipart(UploadImageRequest { image }): TypedMultipart<UploadImageRequest>,
 ) -> Result<(), UploadError> {
     let format = parse("[year][month][day]T[hour][minute][second]Z").unwrap();
@@ -46,12 +50,19 @@ pub async fn upload_image(
     copy(uploaded_image, &storage_path)
         .await
         .map_err(ImageError::from)?;
+    indexer.add_image(Image {
+        path: PathBuf::from(file_name),
+    })?;
     Ok(())
 }
 
 #[derive(Debug, Error)]
-#[error(transparent)]
-pub struct UploadError(#[from] ImageError);
+pub enum UploadError {
+    #[error(transparent)]
+    Image(#[from] ImageError),
+    #[error(transparent)]
+    Internal(#[from] IndexError),
+}
 
 impl IntoResponse for UploadError {
     fn into_response(self) -> Response {

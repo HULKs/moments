@@ -18,12 +18,14 @@ pub async fn handle_websocket_upgrade(
 }
 
 pub async fn handle_websocket(mut socket: WebSocket, indexer: Arc<Indexer>) {
-    let mut updates = indexer.changes.resubscribe();
+    let mut updates = indexer.change_receiver.resubscribe();
     let index = indexer.index().await;
     let message = Message::Text(serde_json::to_string(&index).unwrap());
     socket.send(message).await.unwrap();
     while let Ok(update) = updates.recv().await {
         let message = Message::Text(serde_json::to_string(&update).unwrap());
-        socket.send(message).await.unwrap();
+        if socket.send(message).await.is_err() {
+            break;
+        }
     }
 }
