@@ -96,19 +96,9 @@ class Recommender {
         this.alreadyShown.add(image.path);
         this.imagesAvailable.notifyOne();
       }
-    } else if (
-      typeof message.additions === "object" &&
-      typeof message.deletions === "object"
-    ) {
-      for (const image of message.additions) {
-        this.notYetShown.add(image.path);
-        this.imagesAvailable.notifyOne();
-      }
-      for (const image of message.deletions) {
-        this.notYetShown.delete(image.path);
-        this.alreadyShown.delete(image.path);
-        this.currentlyShowing.delete(image.path);
-      }
+    } else if (typeof message.Addition === "object") {
+      this.notYetShown.add(message.Addition.image.path);
+      this.imagesAvailable.notifyOne();
     } else {
       console.error(`Unexpected message ${message}`);
     }
@@ -190,7 +180,7 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
           options,
           selectedRow,
           imagesInRow,
-          recommender
+          recommender,
         );
         resetStyle(image);
       } catch (error) {

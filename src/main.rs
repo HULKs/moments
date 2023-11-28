@@ -93,12 +93,12 @@ async fn main() -> Result<()> {
         )
         .route(
             &format!("/{}/index", arguments.secret),
-            get(handle_websocket_upgrade).with_state(indexer),
+            get(handle_websocket_upgrade).with_state(indexer.clone()),
         )
         .route(
             &format!("/{}/upload", arguments.secret),
             post(upload_image)
-                .with_state(configuration.clone())
+                .with_state((configuration.clone(), indexer.clone()))
                 .layer(DefaultBodyLimit::max(arguments.max_request_body_size)),
         )
         .fallback_service(ServeDir::new("frontend/"));
