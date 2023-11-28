@@ -1,104 +1,164 @@
 use std::{
-    collections::HashSet,
-    hash::Hash,
+    collections::{hash_map::Entry, HashMap},
+    fs::read_dir,
     path::{Path, PathBuf},
 };
 
 use anyhow::Result;
+use highway::{HighwayHash, HighwayHasher, Key};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
-    select, spawn,
+    fs::read,
+    io, spawn,
     sync::{
         broadcast::{self, error::SendError},
         mpsc, oneshot,
     },
+    task::spawn_blocking,
 };
-use walkdir::WalkDir;
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Index {
-    images: HashSet<Image>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Image {
     pub path: PathBuf,
 }
 
+enum Command {
+    AddImage {
+        hash: ImageHash,
+        image: Image,
+        response: oneshot::Sender<Result<(), IndexError>>,
+    },
+    GetIndex {
+        response: oneshot::Sender<Vec<Image>>,
+    },
+}
+
 pub struct Indexer {
-    change_sender: broadcast::Sender<Change>,
     pub change_receiver: broadcast::Receiver<Change>,
-    index: mpsc::Sender<oneshot::Sender<Index>>,
+    command_sender: mpsc::Sender<Command>,
 }
 
 impl Indexer {
     pub async fn spawn(directory: impl AsRef<Path>) -> Result<Self> {
         let directory = directory.as_ref().to_owned();
         let (change_sender, change_receiver) = broadcast::channel::<Change>(10);
-        let (index_sender, mut index_receiver) = mpsc::channel::<oneshot::Sender<Index>>(10);
+        let (command_sender, mut command_receiver) = mpsc::channel(10);
 
         spawn({
-            let mut change_receiver = change_receiver.resubscribe();
             async move {
-                let mut images = collect_images(&directory).unwrap();
-                loop {
-                    select! {
-                        Some(sender) = index_receiver.recv() => {
-                            sender.send(Index { images: images.clone() }).unwrap();
-                        }
-                        Ok(change) = change_receiver.recv() => {
-                            match change {
-                                Change::Addition { image } => {
-                                    images.insert(image);
-                                }
+                let mut images = collect_images(&directory).await.unwrap();
+                while let Some(command) = command_receiver.recv().await {
+                    match command {
+                        Command::AddImage {
+                            hash,
+                            image,
+                            response,
+                        } => match images.entry(hash) {
+                            Entry::Vacant(entry) => {
+                                entry.insert(image.clone());
+                                change_sender.send(Change::Addition { image }).unwrap();
+                                response.send(Ok(())).unwrap();
                             }
+                            Entry::Occupied(entry) => {
+                                response
+                                    .send(Err(IndexError::Duplicate {
+                                        path: entry.get().path.clone(),
+                                    }))
+                                    .unwrap();
+                            }
+                        },
+                        Command::GetIndex { response } => {
+                            response.send(images.values().cloned().collect()).unwrap();
                         }
                     }
                 }
             }
         });
         Ok(Self {
-            change_sender,
             change_receiver,
-            index: index_sender,
+            command_sender,
         })
     }
 
-    pub async fn index(&self) -> Index {
+    pub async fn index(&self) -> Vec<Image> {
         let (sender, receiver) = oneshot::channel();
-        self.index.send(sender).await.unwrap();
+        self.command_sender
+            .send(Command::GetIndex { response: sender })
+            .await
+            .unwrap();
         receiver.await.unwrap()
     }
 
-    pub fn add_image(&self, image: Image) -> Result<(), IndexError> {
-        self.change_sender.send(Change::Addition { image })?;
-        Ok(())
+    pub async fn add_image(&self, hash: ImageHash, image: Image) -> Result<(), IndexError> {
+        let (sender, receiver) = oneshot::channel();
+        self.command_sender
+            .send(Command::AddImage {
+                hash,
+                image,
+                response: sender,
+            })
+            .await
+            .unwrap();
+        receiver.await.unwrap()
     }
 }
 
 #[derive(Debug, Error)]
-#[error(transparent)]
-pub struct IndexError(#[from] SendError<Change>);
+pub enum IndexError {
+    #[error(transparent)]
+    Internal(#[from] SendError<Change>),
+    #[error("duplicate image {}", path.display())]
+    Duplicate { path: PathBuf },
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Change {
     Addition { image: Image },
 }
 
-pub fn collect_images(path: impl AsRef<Path>) -> Result<HashSet<Image>, walkdir::Error> {
-    let walker = WalkDir::new(&path).into_iter();
-    let images = walker
-        .filter_map(|entry| match entry {
-            Ok(entry) if entry.file_type().is_dir() => None,
-            Ok(entry) => {
-                let stripped_path = entry.path().strip_prefix(&path).unwrap().to_path_buf();
-                Some(Ok(Image {
-                    path: stripped_path,
-                }))
-            }
-            Err(error) => Some(Err(error)),
-        })
-        .collect::<Result<HashSet<_>, _>>()?;
+pub type ImageHash = [u64; 2];
+
+#[derive(Debug, Error)]
+pub enum CollectionError {
+    #[error(transparent)]
+    Internal(#[from] SendError<Change>),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error("duplicate image {}", path.display())]
+    Duplicate { path: PathBuf },
+}
+
+pub async fn collect_images(
+    path: impl AsRef<Path>,
+) -> Result<HashMap<ImageHash, Image>, CollectionError> {
+    let entries = read_dir(&path)?;
+    let mut images: HashMap<ImageHash, Image> = HashMap::new();
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            continue;
+        }
+        let hash = hash_file(entry.path()).await?;
+        let stripped_path = entry.path().strip_prefix(&path).unwrap().to_path_buf();
+        if images.contains_key(&hash) {
+            return Err(CollectionError::Duplicate { path: entry.path() });
+        }
+        images.insert(
+            hash,
+            Image {
+                path: stripped_path,
+            },
+        );
+    }
     Ok(images)
+}
+
+pub async fn hash_file(path: impl AsRef<Path>) -> Result<[u64; 2], io::Error> {
+    let key = Key([1, 3, 3, 7]);
+    let mut hasher = HighwayHasher::new(key);
+    let bytes = read(&path).await?;
+    hasher.append(&bytes);
+    let hash = spawn_blocking(move || hasher.finalize128()).await.unwrap();
+    Ok(hash)
 }

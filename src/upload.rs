@@ -14,7 +14,7 @@ use tokio::fs::copy;
 
 use crate::{
     cache::cache_image,
-    index::{Image, IndexError, Indexer},
+    index::{hash_file, Image, IndexError, Indexer},
     Configuration,
 };
 
@@ -47,12 +47,19 @@ pub async fn upload_image(
     )
     .await?;
 
+    let hash = hash_file(uploaded_image).await?;
+    indexer
+        .add_image(
+            hash,
+            Image {
+                path: PathBuf::from(file_name),
+            },
+        )
+        .await?;
+
     copy(uploaded_image, &storage_path)
         .await
         .map_err(ImageError::from)?;
-    indexer.add_image(Image {
-        path: PathBuf::from(file_name),
-    })?;
     Ok(())
 }
 
@@ -61,7 +68,9 @@ pub enum UploadError {
     #[error(transparent)]
     Image(#[from] ImageError),
     #[error(transparent)]
-    Internal(#[from] IndexError),
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Index(#[from] IndexError),
 }
 
 impl IntoResponse for UploadError {

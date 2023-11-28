@@ -116,8 +116,10 @@ async fn main() -> Result<()> {
 }
 
 async fn populate_cache(configuration: &Configuration) -> Result<()> {
-    let images = collect_images(&configuration.storage).context("failed to index storage")?;
-    for image in images {
+    let images = collect_images(&configuration.storage)
+        .await
+        .context("failed to index storage")?;
+    for image in images.values() {
         let storage_path = configuration.storage.join(&image.path);
         let cache_path = configuration.cache.join(&image.path);
         cache_image(

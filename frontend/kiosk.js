@@ -91,8 +91,8 @@ class Recommender {
   }
   #handleMessage(message) {
     console.log("message", message);
-    if (typeof message.images === "object") {
-      for (const image of message.images) {
+    if (Array.isArray(message)) {
+      for (const image of message) {
         this.alreadyShown.add(image.path);
         this.imagesAvailable.notifyOne();
       }
