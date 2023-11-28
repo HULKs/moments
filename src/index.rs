@@ -1,18 +1,22 @@
 use std::{
     collections::HashSet,
     hash::Hash,
+    io,
     path::{Path, PathBuf},
 };
 
 use anyhow::Result;
+use highway::{HighwayHash, HighwayHasher, Key};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
-    select, spawn,
+    fs::{self, read, read_dir},
+    io, select, spawn,
     sync::{
         broadcast::{self, error::SendError},
         mpsc, oneshot,
     },
+    task::spawn_blocking,
 };
 use walkdir::WalkDir;
 
@@ -24,6 +28,7 @@ pub struct Index {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Image {
     pub path: PathBuf,
+    pub hash: [u64; 2],
 }
 
 pub struct Indexer {
@@ -78,20 +83,33 @@ impl Indexer {
 }
 
 #[derive(Debug, Error)]
-#[error(transparent)]
-pub struct IndexError(#[from] SendError<Change>);
+pub enum IndexError {
+    #[error(transparent)]
+    Internal(#[from] SendError<Change>),
+    #[error("duplicate image")]
+    Duplicate,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Change {
     Addition { image: Image },
 }
 
-pub fn collect_images(path: impl AsRef<Path>) -> Result<HashSet<Image>, walkdir::Error> {
-    let walker = WalkDir::new(&path).into_iter();
-    let images = walker
+#[derive(Debug, Error)]
+pub enum CollectionError {
+    #[error(transparent)]
+    Internal(#[from] SendError<Change>),
+    #[error("duplicate image")]
+    Duplicate,
+}
+
+pub async fn collect_images(path: impl AsRef<Path>) -> Result<HashSet<Image>, io::Error> {
+    let paths = read_dir(&path).await?;
+    let images = paths
         .filter_map(|entry| match entry {
             Ok(entry) if entry.file_type().is_dir() => None,
             Ok(entry) => {
+                let hash = hash_file(entry.path())?;
                 let stripped_path = entry.path().strip_prefix(&path).unwrap().to_path_buf();
                 Some(Ok(Image {
                     path: stripped_path,
@@ -101,4 +119,13 @@ pub fn collect_images(path: impl AsRef<Path>) -> Result<HashSet<Image>, walkdir:
         })
         .collect::<Result<HashSet<_>, _>>()?;
     Ok(images)
+}
+
+pub async fn hash_file(path: impl AsRef<Path>) -> Result<[u64; 2], io::Error> {
+    let key = Key([1, 3, 3, 7]);
+    let mut hasher = HighwayHasher::new(key);
+    let bytes = read(&path).await?;
+    hasher.append(&bytes);
+    let hash = spawn_blocking(move || hasher.finalize128()).await.unwrap();
+    Ok(hash)
 }
