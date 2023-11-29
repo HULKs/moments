@@ -3,6 +3,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Context, Result};
 use axum::{
     extract::DefaultBodyLimit,
+    http::{header, HeaderValue},
     routing::{get, post},
     Router, Server,
 };
@@ -12,7 +13,8 @@ use env_logger::Env;
 use index::{collect_images, Indexer};
 use log::info;
 use tokio::fs::create_dir_all;
-use tower_http::services::ServeDir;
+use tower::ServiceBuilder;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use upload::upload_image;
 use websocket::handle_websocket_upgrade;
 
@@ -89,7 +91,12 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .nest_service(
             &format!("/{}/images", arguments.secret),
-            ServeDir::new(&configuration.cache),
+            ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=15552000"),
+                ))
+                .service(ServeDir::new(&configuration.cache)),
         )
         .route(
             &format!("/{}/index", arguments.secret),
@@ -101,7 +108,14 @@ async fn main() -> Result<()> {
                 .with_state((configuration.clone(), indexer.clone()))
                 .layer(DefaultBodyLimit::max(arguments.max_request_body_size)),
         )
-        .fallback_service(ServeDir::new("frontend/"));
+        .fallback_service(
+            ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("no-cache no-store"),
+                ))
+                .service(ServeDir::new("frontend/")),
+        );
 
     let address: SocketAddr = format!("{}:{}", arguments.host, arguments.port)
         .parse()
