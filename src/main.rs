@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
             ServiceBuilder::new()
                 .layer(SetResponseHeaderLayer::if_not_present(
                     header::CACHE_CONTROL,
-                    HeaderValue::from_static("no-cache no-store"),
+                    HeaderValue::from_static("no-cache, no-store"),
                 ))
                 .service(ServeDir::new("frontend/")),
         );
