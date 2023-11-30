@@ -39,4 +39,4 @@ jobs:
 
       - name: Echo outputs
         run: |
-          echo "${{ toJSON(steps.push.outputs) }}"
+          echo "${{ toJSON(steps.push-to-registry.outputs) }}"
