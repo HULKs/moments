@@ -13,7 +13,28 @@ if (!window.location.hash) {
   }
 }
 if (window.location.hash) {
-  document.body.className = "state-select-first";
+  (async () => {
+    const secret = window.location.hash.substring(1).toLowerCase();
+    const response = await fetch(
+      new URL(`./${secret}/upload`, window.location),
+      {
+        method: "OPTIONS",
+      }
+    );
+    console.log(response);
+    if (response.status != 405) {
+      alert("Failed to check for correct secret (!= 405)");
+      window.location.hash = "";
+      return;
+    }
+    const correctSecret = response.headers.get("allow") === "POST";
+    if (!correctSecret) {
+      alert(`Incorrect event secret "${secret}"`);
+      window.location.hash = "";
+      return;
+    }
+    document.body.className = "state-select-first";
+  })();
 }
 
 let objectUrl = null;
@@ -41,7 +62,7 @@ filePicker.addEventListener("change", () => {
 selectButtons.forEach((selectButton) =>
   selectButton.addEventListener("click", () => {
     filePicker.click();
-  }),
+  })
 );
 
 uploadButton.addEventListener("click", async () => {
@@ -50,11 +71,14 @@ uploadButton.addEventListener("click", async () => {
   try {
     document.body.className = "state-progress";
     const response = await fetch(
-      new URL(`./${window.location.hash.substring(1)}/upload`, window.location),
+      new URL(
+        `./${window.location.hash.substring(1).toLowerCase()}/upload`,
+        window.location
+      ),
       {
         method: "POST",
         body: form,
-      },
+      }
     );
     if (!response.ok) {
       throw await response.text();
