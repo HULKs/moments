@@ -33,7 +33,7 @@ selectedImage.onerror = (error) => {
 
 const filePicker = document.createElement("input");
 filePicker.type = "file";
-filePicker.accept = "image/*";
+filePicker.accept = "image/bmp,image/jpeg,image/png,image/tiff,image/webp";
 filePicker.addEventListener("change", () => {
   selectedImage.src = URL.createObjectURL(filePicker.files[0]);
 });
