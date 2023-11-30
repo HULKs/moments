@@ -47,7 +47,7 @@ fn load_and_resize(
     let resized_image = image.resize(max_size, max_size, FilterType::Lanczos3);
 
     let transformed_image = match orientation {
-        1 => resized_image,
+        0 | 1 => resized_image,
         2 => resized_image.fliph(),
         3 => resized_image.rotate180(),
         4 => resized_image.flipv(),
