@@ -83,6 +83,7 @@ class Recommender {
 
     this.webSocket = new WebSocket(url);
     this.webSocket.addEventListener("close", () => {
+      document.body.style.setProperty("background-color", "red");
       alert("Server connection disconnected, please reload");
     });
     this.webSocket.addEventListener("message", (event) => {
