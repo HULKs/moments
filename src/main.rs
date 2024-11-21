@@ -12,7 +12,7 @@ use clap::Parser;
 use env_logger::Env;
 use index::{collect_images, Indexer};
 use log::info;
-use tokio::{fs::create_dir_all, net::TcpListener};
+use tokio::{fs::create_dir_all, net::TcpListener, signal};
 use tower::ServiceBuilder;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use upload::upload_image;
@@ -126,6 +126,7 @@ async fn main() -> Result<()> {
         .await
         .context("failed to bind listener")?;
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .context("failed to start server")?;
     Ok(())
@@ -148,4 +149,24 @@ async fn populate_cache(configuration: &Configuration) -> Result<()> {
         .context("failed to cache image")?;
     }
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
