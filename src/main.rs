@@ -5,14 +5,14 @@ use axum::{
     extract::DefaultBodyLimit,
     http::{header, HeaderValue},
     routing::{get, post},
-    Router, Server,
+    Router,
 };
 use cache::cache_image;
 use clap::Parser;
 use env_logger::Env;
 use index::{collect_images, Indexer};
 use log::info;
-use tokio::fs::create_dir_all;
+use tokio::{fs::create_dir_all, net::TcpListener};
 use tower::ServiceBuilder;
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use upload::upload_image;
@@ -122,8 +122,10 @@ async fn main() -> Result<()> {
         .context("failed to parse host and port")?;
 
     info!("Serving at {address}");
-    Server::bind(&address)
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind(&address)
+        .await
+        .context("failed to bind listener")?;
+    axum::serve(listener, app)
         .await
         .context("failed to start server")?;
     Ok(())
