@@ -13,7 +13,7 @@ const options = {
   popDownDuration: baseDuration * 0.75,
   allowedRelativeWidthFromCenterForAdditions: 0.4, // from center in one direction, so actually twice
   easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
-  amountOfRows: 8,
+  amountOfRows: 4,
   stopIteration: false,
   secret: window.location.hash.substring(1),
 };
@@ -202,7 +202,7 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
 
 const activeRegions = [];
 
-function rectsOverlap(a, b, buffer = 20) {
+function rectsOverlap(a, b, buffer = 100) {
   return !(
     a.right + buffer < b.left - buffer ||
     a.left - buffer > b.right + buffer ||
@@ -246,25 +246,27 @@ async function addImage(options, rows, recommender) {
     recommender,
   );
   const width = ((100 / options.amountOfRows) / image.naturalHeight) * image.naturalWidth;
+  const height = (100 / options.amountOfRows);
 
-  const region = image.getBoundingClientRect();
+  const finalHeight = (height / 100) * window.innerHeight;
+  const finalWidth = (width / 100) * window.innerHeight;
+  
+  const scaledWidth = finalWidth * options.highlightScale;
+  const scaledHeight = finalHeight * options.highlightScale;
+
+  const imageRegion = image.getBoundingClientRect();
+  
+  const region = {
+    left: imageRegion.x - scaledWidth / 2,
+    right: imageRegion.x + scaledWidth / 2,
+    top: imageRegion.y - scaledHeight / 2,
+    bottom: imageRegion.y + scaledHeight / 2,
+  };
+  
   console.log(region)
-  console.log(width)
-
-  const scaledWidth = region.width * options.highlightScale;
-  const scaledHeight = region.height * options.highlightScale;
-
-  region.x -= (scaledWidth - region.width);
-  region.y -= (scaledHeight - region.height);
-  region.width = scaledWidth;
-  region.height = scaledHeight;
-  region.right = region.x + region.width;
-  region.bottom = region.y + region.height;
-  region.left = region.x;
-  region.top = region.y;
-
+  
   while (!isRegionFree(region)) {
-    await sleep(50); // wait & retry
+    await sleep(50);
   }
 
   addActiveRegion(region);
