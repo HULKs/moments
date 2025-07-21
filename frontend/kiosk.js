@@ -14,9 +14,11 @@ const options = {
   allowedRelativeWidthFromCenterForAdditions: 0.4, // from center in one direction, so actually twice
   easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
   amountOfRows: 5,
+  numWorkers: 3,
   stopIteration: false,
   secret: window.location.hash.substring(1),
 };
+options.totalDuration = options.popUpDuration + options.highlightDuration + options.popDownDuration;
 
 class AwaitableCondition {
   constructor(conditionPredicate) {
@@ -155,13 +157,20 @@ class Recommender {
     }vh - 0.125cm))`,
   );
   await addImagesUntilScreenIsFull(options, rows, recommender);
-  while (!options.stopIteration) {
-    try {
-      await addImage(options, rows, recommender);
-    } catch (error) {
-      console.error(error);
-    }
+
+  for (let i = 0; i < options.numWorkers; i++) {
+    await sleep(options.totalDuration / options.numWorkers);
+    (async function worker() {
+      while (!options.stopIteration) {
+        try {
+          await addImage(options, rows, recommender);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    })();
   }
+
 })();
 
 async function addImagesUntilScreenIsFull(options, rows, recommender) {
@@ -192,6 +201,43 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
   }
 }
 
+const activeRegions = [];
+
+function rectsOverlap(a, b, buffer = 100) {
+  return !(
+    a.right + buffer < b.left - buffer ||
+    a.left - buffer > b.right + buffer ||
+    a.bottom + buffer < b.top - buffer ||
+    a.top - buffer > b.bottom + buffer
+  );
+}
+
+function isRegionFree(newRect) {
+  return !activeRegions.some((rect) => rectsOverlap(rect, newRect));
+}
+
+function addActiveRegion(rect) {
+  activeRegions.push(rect);
+}
+
+function removeActiveRegion(rect) {
+  const index = activeRegions.indexOf(rect);
+  if (index !== -1) {
+    activeRegions.splice(index, 1);
+  }
+}
+
+const activeRows = new Set();
+
+function getAvailableRow(rows) {
+  const availableRows = rows.filter(row => !activeRows.has(row));
+  if (availableRows.length === 0) {
+    return null;
+  }
+  return availableRows[Math.floor(Math.random() * availableRows.length)];
+}
+
+
 async function addImage(options, rows, recommender) {
   if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
     document.body.style.setProperty("background-color", "red");
@@ -202,7 +248,13 @@ async function addImage(options, rows, recommender) {
     };
   }
 
-  const selectedRow = rows[Math.floor(Math.random() * rows.length)];
+  const selectedRow = getAvailableRow(rows);
+  if (selectedRow === null) {
+    console.warn("All rows are currently in use. Skipping image placement.");
+    return;
+  }
+  activeRows.add(selectedRow);
+
   const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
 
   const image = await loadAndInsertImage(
@@ -211,15 +263,46 @@ async function addImage(options, rows, recommender) {
     imagesInRow,
     recommender,
   );
-  const width = (20 / image.naturalHeight) * image.naturalWidth;
-  await animatePopUp(options, image, width);
-  await sleep(options.highlightDuration);
-  await Promise.all([
-    animatePopDown(options, image, width),
-    removeOutOfViewportImages(options, selectedRow, recommender),
-  ]);
-  resetStyle(image);
+  const width = ((100 / options.amountOfRows) / image.naturalHeight) * image.naturalWidth;
+  const height = (100 / options.amountOfRows);
+
+  const finalHeight = (height / 100) * window.innerHeight;
+  const finalWidth = (width / 100) * window.innerHeight;
+  
+  const scaledWidth = finalWidth * options.highlightScale;
+  const scaledHeight = finalHeight * options.highlightScale;
+
+  const imageRegion = image.getBoundingClientRect();
+  
+  const region = {
+    left: imageRegion.x - scaledWidth / 2,
+    right: imageRegion.x + scaledWidth / 2,
+    top: imageRegion.y - scaledHeight / 2,
+    bottom: imageRegion.y + scaledHeight / 2,
+  };
+    
+  while (!isRegionFree(region)) {
+    await sleep(options.totalDuration);
+  }
+
+  addActiveRegion(region);
+
+  try {
+    await animatePopUp(options, image, width);
+    await sleep(options.highlightDuration);
+    await Promise.all([
+      animatePopDown(options, image, width),
+      removeOutOfViewportImages(options, selectedRow, recommender),
+    ]);
+    resetStyle(image);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    removeActiveRegion(region);
+    activeRows.delete(selectedRow);
+  }
 }
+
 
 async function loadAndInsertImage(
   options,
