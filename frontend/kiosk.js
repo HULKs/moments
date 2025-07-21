@@ -13,10 +13,20 @@ const options = {
   popDownDuration: baseDuration * 0.75,
   allowedRelativeWidthFromCenterForAdditions: 0.4, // from center in one direction, so actually twice
   easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
-  amountOfRows: 5,
+  amountOfRows: calculateRowCount(),
   stopIteration: false,
   secret: window.location.hash.substring(1),
 };
+
+function calculateRowCount() {
+  const screenHeight = window.innerHeight;
+  const dpr = window.devicePixelRatio;
+
+  const baseRowHeight = 200; // A comfortable image height in CSS pixels
+  const visualScale = dpr > 2 ? 1.25 : 1; // Adjust slightly for high-DPI devices
+
+  return Math.max(2, Math.floor(screenHeight / (baseRowHeight * visualScale)));
+}
 
 class AwaitableCondition {
   constructor(conditionPredicate) {
@@ -211,7 +221,7 @@ async function addImage(options, rows, recommender) {
     imagesInRow,
     recommender,
   );
-  const width = (20 / image.naturalHeight) * image.naturalWidth;
+  const width = ((100 / options.amountOfRows) / image.naturalHeight) * image.naturalWidth;
   await animatePopUp(options, image, width);
   await sleep(options.highlightDuration);
   await Promise.all([
