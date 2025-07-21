@@ -155,13 +155,21 @@ class Recommender {
     }vh - 0.125cm))`,
   );
   await addImagesUntilScreenIsFull(options, rows, recommender);
-  while (!options.stopIteration) {
-    try {
-      await addImage(options, rows, recommender);
-    } catch (error) {
-      console.error(error);
-    }
+  const NUM_WORKERS = 3;
+
+  for (let i = 0; i < NUM_WORKERS; i++) {
+    await sleep((options.popUpDuration + options.highlightDuration + options.popDownDuration) / NUM_WORKERS);
+    (async function worker() {
+      while (!options.stopIteration) {
+        try {
+          await addImage(options, rows, recommender);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    })();
   }
+
 })();
 
 async function addImagesUntilScreenIsFull(options, rows, recommender) {
@@ -192,6 +200,32 @@ async function addImagesUntilScreenIsFull(options, rows, recommender) {
   }
 }
 
+const activeRegions = [];
+
+function rectsOverlap(a, b, buffer = 20) {
+  return !(
+    a.right + buffer < b.left - buffer ||
+    a.left - buffer > b.right + buffer ||
+    a.bottom + buffer < b.top - buffer ||
+    a.top - buffer > b.bottom + buffer
+  );
+}
+
+function isRegionFree(newRect) {
+  return !activeRegions.some((rect) => rectsOverlap(rect, newRect));
+}
+
+function addActiveRegion(rect) {
+  activeRegions.push(rect);
+}
+
+function removeActiveRegion(rect) {
+  const index = activeRegions.indexOf(rect);
+  if (index !== -1) {
+    activeRegions.splice(index, 1);
+  }
+}
+
 async function addImage(options, rows, recommender) {
   if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
     document.body.style.setProperty("background-color", "red");
@@ -212,14 +246,42 @@ async function addImage(options, rows, recommender) {
     recommender,
   );
   const width = (20 / image.naturalHeight) * image.naturalWidth;
-  await animatePopUp(options, image, width);
-  await sleep(options.highlightDuration);
-  await Promise.all([
-    animatePopDown(options, image, width),
-    removeOutOfViewportImages(options, selectedRow, recommender),
-  ]);
-  resetStyle(image);
+
+  const region = image.getBoundingClientRect();
+
+  const scaledWidth = region.width * options.highlightScale;
+  const scaledHeight = region.height * options.highlightScale;
+
+  region.x -= (scaledWidth - region.width);
+  region.y -= (scaledHeight - region.height);
+  region.width = scaledWidth;
+  region.height = scaledHeight;
+  region.right = region.x + region.width;
+  region.bottom = region.y + region.height;
+  region.left = region.x;
+  region.top = region.y;
+
+  while (!isRegionFree(region)) {
+    await sleep(50); // wait & retry
+  }
+
+  addActiveRegion(region);
+
+  try {
+    await animatePopUp(options, image, width);
+    await sleep(options.highlightDuration);
+    await Promise.all([
+      animatePopDown(options, image, width),
+      removeOutOfViewportImages(options, selectedRow, recommender),
+    ]);
+    resetStyle(image);
+  } catch (error) {
+    console.error(error);
+  } finally {
+    removeActiveRegion(region);
+  }
 }
+
 
 async function loadAndInsertImage(
   options,
