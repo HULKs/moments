@@ -13,10 +13,12 @@ const options = {
   popDownDuration: baseDuration * 0.75,
   allowedRelativeWidthFromCenterForAdditions: 0.4, // from center in one direction, so actually twice
   easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
-  amountOfRows: 4,
+  amountOfRows: 5,
+  numWorkers: 3,
   stopIteration: false,
   secret: window.location.hash.substring(1),
 };
+options.totalDuration = options.popUpDuration + options.highlightDuration + options.popDownDuration;
 
 class AwaitableCondition {
   constructor(conditionPredicate) {
@@ -155,10 +157,9 @@ class Recommender {
     }vh - 0.125cm))`,
   );
   await addImagesUntilScreenIsFull(options, rows, recommender);
-  const NUM_WORKERS = 3;
 
-  for (let i = 0; i < NUM_WORKERS; i++) {
-    await sleep((options.popUpDuration + options.highlightDuration + options.popDownDuration) / NUM_WORKERS);
+  for (let i = 0; i < options.numWorkers; i++) {
+    await sleep(options.totalDuration / options.numWorkers);
     (async function worker() {
       while (!options.stopIteration) {
         try {
@@ -226,6 +227,17 @@ function removeActiveRegion(rect) {
   }
 }
 
+const activeRows = new Set();
+
+function getAvailableRow(rows) {
+  const availableRows = rows.filter(row => !activeRows.has(row));
+  if (availableRows.length === 0) {
+    return null;
+  }
+  return availableRows[Math.floor(Math.random() * availableRows.length)];
+}
+
+
 async function addImage(options, rows, recommender) {
   if (options.allowedRelativeWidthFromCenterForAdditions >= 0.5) {
     document.body.style.setProperty("background-color", "red");
@@ -236,7 +248,13 @@ async function addImage(options, rows, recommender) {
     };
   }
 
-  const selectedRow = rows[Math.floor(Math.random() * rows.length)];
+  const selectedRow = getAvailableRow(rows);
+  if (selectedRow === null) {
+    console.warn("All rows are currently in use. Skipping image placement.");
+    return;
+  }
+  activeRows.add(selectedRow);
+
   const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
 
   const image = await loadAndInsertImage(
@@ -262,11 +280,9 @@ async function addImage(options, rows, recommender) {
     top: imageRegion.y - scaledHeight / 2,
     bottom: imageRegion.y + scaledHeight / 2,
   };
-  
-  console.log(region)
-  
+    
   while (!isRegionFree(region)) {
-    await sleep(50);
+    await sleep(options.totalDuration);
   }
 
   addActiveRegion(region);
@@ -283,6 +299,7 @@ async function addImage(options, rows, recommender) {
     console.error(error);
   } finally {
     removeActiveRegion(region);
+    activeRows.delete(selectedRow);
   }
 }
 
