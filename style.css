@@ -1,0 +1,36 @@
+html,
+body {
+  background-color: #000;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 100vw;
+  row-gap: 0.125cm;
+  margin: 0.0625cm 0;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  /* Ensure rows don't collapse */
+  min-height: 10px; 
+}
+
+img {
+  display: block;
+  object-fit: cover;
+  border-radius: 0.125cm;
+  will-change: box-shadow, margin, transform, width;
+  height: 100%;
+  margin: 0 0.0625cm;
+  box-sizing: content-box;
+  background-color: #222;
+}

@@ -2,12 +2,58 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>moments</title>
+    <title>Immich Moments Kiosk</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      /* Loading overlay style */
+      #setup {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #111;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        font-family: sans-serif;
+      }
+      #setup.hidden {
+        display: none;
+      }
+      input {
+        padding: 10px;
+        margin: 5px;
+        width: 300px;
+        border-radius: 4px;
+        border: none;
+      }
+      button {
+        padding: 10px 20px;
+        background: #fff;
+        border: none;
+        cursor: pointer;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="setup">
+      <h2>Immich Kiosk Setup</h2>
+      <input
+        type="text"
+        id="baseUrl"
+        placeholder="Server URL (e.g. https://immich.example.com)"
+      />
+      <input type="password" id="apiKey" placeholder="API Key" />
+      <input type="text" id="albumId" placeholder="Album ID (UUID)" />
+      <button id="startBtn">Start Slideshow</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
