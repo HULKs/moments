@@ -5,6 +5,8 @@ export interface KioskAsset {
   height: number;
   // Creation time for sorting/prioritization
   createdAt: Date;
+  // Distinguish between Image and Video
+  type: 'IMAGE' | 'VIDEO';
 }
 
 export interface KioskConfig {

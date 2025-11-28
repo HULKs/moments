@@ -2,28 +2,26 @@ import {
   defaults,
   getAlbumInfo,
   viewAsset,
-  AssetMediaSize
+  playAssetVideo,
+  AssetMediaSize,
+  AssetTypeEnum
 } from '@immich/sdk';
 import type { KioskConfig, KioskAsset } from './types';
 
 export class ImmichService {
-  private seenIds = new Set<string>();
+  private fetchedIds = new Set<string>();
   private newQueue: KioskAsset[] = [];
   private oldQueue: KioskAsset[] = [];
   private config: KioskConfig;
+  private isConnected: boolean = true;
 
   constructor(config: KioskConfig) {
     this.config = config;
-    // In src/immichService.ts constructor
 
-    // If user enters empty string or "/", handle it gracefully
     let cleanBaseUrl = config.baseUrl || "";
-
     if (cleanBaseUrl === "" || cleanBaseUrl === "/") {
-      // If using proxy, we just want to point to the /api path relative to current domain
       cleanBaseUrl = "/api";
     } else {
-      // Normal absolute URL cleaning
       if (cleanBaseUrl.endsWith('/')) cleanBaseUrl = cleanBaseUrl.slice(0, -1);
       if (!cleanBaseUrl.endsWith('/api')) cleanBaseUrl += '/api';
     }
@@ -45,38 +43,52 @@ export class ImmichService {
     }, intervalMs);
   }
 
+  /**
+   * Returns the current connection status to the Immich server.
+   */
+  public isImmichConnected(): boolean {
+    return this.isConnected;
+  }
+
   private async refreshAssets() {
     try {
       const albumInfo = await getAlbumInfo({ id: this.config.albumId });
 
-      // Sort by creation date to identify "new" items correctly
+      // Update status on success
+      this.isConnected = true;
+
       const assets = albumInfo.assets.sort((a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
 
       for (const asset of assets) {
-        if (!this.seenIds.has(asset.id)) {
+        if (!this.fetchedIds.has(asset.id)) {
 
-          // Extract dimensions from EXIF, default to 1920x1080 if missing (e.g. unprocessed videos)
+          // Extract dimensions from EXIF, default to 1920x1080 if missing
           const width = asset.exifInfo?.exifImageWidth || 1920;
           const height = asset.exifInfo?.exifImageHeight || 1080;
+
+          // Determine type based on SDK enum
+          const type = asset.type === AssetTypeEnum.Video ? 'VIDEO' : 'IMAGE';
 
           const kioskAsset: KioskAsset = {
             id: asset.id,
             width,
             height,
-            createdAt: new Date(asset.createdAt)
+            createdAt: new Date(asset.createdAt),
+            type
           };
 
-          this.newQueue.push(kioskAsset);
-          this.seenIds.add(asset.id);
+          this.fetchedIds.add(asset.id);
 
-          // Add to oldQueue immediately so it enters the rotation after being shown once
+          this.newQueue.push(kioskAsset);
           this.oldQueue.push(kioskAsset);
         }
       }
     } catch (err) {
       console.error("Error polling Immich album:", err);
+      // Update status on failure
+      this.isConnected = false;
     }
   }
 
@@ -85,8 +97,6 @@ export class ImmichService {
    */
   public async fetchImageBlob(asset: KioskAsset): Promise<string> {
     try {
-      // Use 'viewAsset' as per the definition file provided.
-      // We request 'Preview' size for better performance than 'Fullsize' but better quality than 'Thumbnail'.
       const blob = await viewAsset({
         id: asset.id,
         size: AssetMediaSize.Preview
@@ -95,6 +105,22 @@ export class ImmichService {
       return URL.createObjectURL(blob);
     } catch (error) {
       console.error(`Failed to load image for ${asset.id}`, error);
+      throw error;
+    }
+  }
+
+  /**
+    * Downloads the video blob using the `playAssetVideo` endpoint.
+    */
+  public async fetchVideoBlob(asset: KioskAsset): Promise<string> {
+    try {
+      const blob = await playAssetVideo({
+        id: asset.id,
+      });
+
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error(`Failed to load video for ${asset.id}`, error);
       throw error;
     }
   }
@@ -115,6 +141,6 @@ export class ImmichService {
   }
 
   public hasContent(): boolean {
-    return this.seenIds.size > 0;
+    return this.fetchedIds.size > 0;
   }
 }

@@ -23,11 +23,13 @@ export const DefaultOptions: KioskOptions = {
   numberOfRows: 5,
 };
 
+// Helper type for our grid items
+type KioskMediaElement = HTMLImageElement | HTMLVideoElement;
+
 export class KioskEngine {
   private options: KioskOptions;
   private service: ImmichService;
   private isRunning = false;
-  // Store rows as a class property to avoid redeclaration issues
   private rowElements: HTMLDivElement[] = [];
 
   constructor(service: ImmichService, options: KioskOptions = DefaultOptions) {
@@ -39,15 +41,15 @@ export class KioskEngine {
     this.isRunning = true;
     this.setupGrid();
 
-    // Wait for at least one image to exist
+    // Wait for at least one asset to exist
     while (!this.service.hasContent()) {
       await this.sleep(500);
     }
 
-    // Initial Fill: Fill the screen with historical images
+    // Initial Fill: Fill the screen with historical assets
     await this.fillScreen();
 
-    // Main Loop: Add new images one by one with animation
+    // Main Loop: Add new assets one by one with animation
     while (this.isRunning) {
       try {
         await this.processNextIteration();
@@ -81,15 +83,15 @@ export class KioskEngine {
     for (const selectedRow of this.rowElements) {
       // Try to fill row until width > viewport
       while (this.isRunning) {
-        const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
-        const widthOfRow = imagesInRow.reduce((sum, img) => sum + img.getBoundingClientRect().width, 0);
+        const mediaInRow = Array.from(selectedRow.querySelectorAll("img, video")) as KioskMediaElement[];
+        const widthOfRow = mediaInRow.reduce((sum, el) => sum + el.getBoundingClientRect().width, 0);
 
         if (widthOfRow >= window.innerWidth) break;
 
         try {
-          const imgElement = await this.loadAndInsertImage(selectedRow, imagesInRow);
+          const element = await this.loadAndInsertAsset(selectedRow, mediaInRow);
           // For initial fill, we don't want the "pop" animation state left over
-          if (imgElement) this.resetStyle(imgElement);
+          if (element) this.resetStyle(element);
         } catch (e) {
           // Break inner loop if loading fails or no assets
           break;
@@ -104,41 +106,45 @@ export class KioskEngine {
     }
 
     const selectedRow = this.rowElements[Math.floor(Math.random() * this.rowElements.length)];
-    const imagesInRow = Array.from(selectedRow.querySelectorAll("img"));
+    // Select both images and videos
+    const mediaInRow = Array.from(selectedRow.querySelectorAll("img, video")) as KioskMediaElement[];
 
-    const image = await this.loadAndInsertImage(selectedRow, imagesInRow);
-    if (!image) {
-      // No image loaded (maybe empty queue), wait a bit
+    const element = await this.loadAndInsertAsset(selectedRow, mediaInRow);
+    if (!element) {
+      // No asset loaded (maybe empty queue), wait a bit
       await this.sleep(500);
       return;
     }
 
-    // Calculate target width based on 20vh reference logic
-    const width = (20 / image.naturalHeight) * image.naturalWidth;
+    // Get dimensions regardless of element type
+    const { width: naturalWidth, height: naturalHeight } = this.getMediaDimensions(element);
 
-    await this.animatePopUp(image, width);
+    // Calculate target width based on 20vh reference logic
+    const width = (20 / naturalHeight) * naturalWidth;
+
+    await this.animatePopUp(element, width);
     await this.sleep(this.options.highlightDuration);
 
     await Promise.all([
-      this.animatePopDown(image, width),
-      this.removeOutOfViewportImages(selectedRow),
+      this.animatePopDown(element, width),
+      this.removeOutOfViewportAssets(selectedRow),
     ]);
 
-    this.resetStyle(image);
+    this.resetStyle(element);
   }
 
-  private async loadAndInsertImage(
+  private async loadAndInsertAsset(
     row: HTMLDivElement,
-    imagesInRow: HTMLImageElement[]
-  ): Promise<HTMLImageElement | null> {
+    siblingsInRow: KioskMediaElement[]
+  ): Promise<KioskMediaElement | null> {
 
-    let imgElement: HTMLImageElement;
+    let element: KioskMediaElement;
 
     // Insertion Logic
-    if (imagesInRow.length > 0) {
+    if (siblingsInRow.length > 0) {
       const viewportWidth = window.innerWidth;
-      const validSiblings = imagesInRow.filter((img) => {
-        const left = img.getBoundingClientRect().left;
+      const validSiblings = siblingsInRow.filter((el) => {
+        const left = el.getBoundingClientRect().left;
         const rel = this.options.allowedRelativeWidthFromCenterForAdditions;
         return (
           left >= (0.5 - rel) * viewportWidth &&
@@ -149,69 +155,139 @@ export class KioskEngine {
       if (validSiblings.length === 0) return null;
 
       const sibling = validSiblings[Math.floor(Math.random() * validSiblings.length)];
-      imgElement = document.createElement("img");
-      row.insertBefore(imgElement, sibling);
+
+      // Determine what element to create based on the next asset
+      // (We don't know the type until we peek or fetch, but strictly speaking 
+      // we need the element in the DOM to insertBefore. 
+      // Let's fetch the asset data first.)
+      const assetCheck = await this.service.getNextImage(); // Note: Method name might still be getNextImage in service, but returns KioskAsset
+      if (!assetCheck) return null;
+
+      // Create specific element based on type
+      if (assetCheck.type === 'VIDEO') {
+        const vid = document.createElement("video");
+        vid.muted = true;
+        vid.autoplay = true;
+        vid.loop = true;
+        vid.playsInline = true;
+        element = vid;
+      } else {
+        element = document.createElement("img");
+      }
+
+      row.insertBefore(element, sibling);
+
+      // We need to pass the asset we just peeked/popped to the loading logic.
+      // Since service.getNextImage() pops from queue, we use `assetCheck` directly below.
+      // However, `loadData` block below expects to call `getNextImage` again if we don't reuse.
+      // To keep logic simple: we reused the asset we just got.
+
+      // Initialize styles
+      element.style.boxShadow = "none";
+      element.style.margin = "0 0";
+      element.style.transform = "none";
+      element.style.width = "0";
+      element.style.zIndex = "1";
+
+      return this.loadAssetData(element, assetCheck);
+
     } else {
-      imgElement = document.createElement("img");
-      row.appendChild(imgElement);
+      // Empty row case
+      const assetCheck = await this.service.getNextImage();
+      if (!assetCheck) return null;
+
+      if (assetCheck.type === 'VIDEO') {
+        const vid = document.createElement("video");
+        vid.muted = true;
+        vid.autoplay = true;
+        vid.loop = true;
+        vid.playsInline = true;
+        element = vid;
+      } else {
+        element = document.createElement("img");
+      }
+
+      row.appendChild(element);
+
+      // Initialize styles
+      element.style.boxShadow = "none";
+      element.style.margin = "0 0";
+      element.style.transform = "none";
+      element.style.width = "0";
+      element.style.zIndex = "1";
+
+      return this.loadAssetData(element, assetCheck);
     }
-
-    // Initialize styles
-    imgElement.style.boxShadow = "none";
-    imgElement.style.margin = "0 0";
-    imgElement.style.transform = "none";
-    imgElement.style.width = "0";
-    imgElement.style.zIndex = "1";
-
-    // Data Fetching
-    const asset: KioskAsset | undefined = await this.service.getNextImage();
-    if (!asset) {
-      imgElement.remove();
-      return null;
-    }
-
-    try {
-      const blobUrl = await this.service.fetchImageBlob(asset);
-      imgElement.src = blobUrl;
-
-      // Tag element for cleanup later
-      imgElement.dataset.blobUrl = blobUrl;
-
-      await new Promise<void>((resolve, reject) => {
-        imgElement.onload = () => resolve();
-        imgElement.onerror = (e) => reject(e);
-      });
-    } catch (e) {
-      imgElement.remove();
-      return null;
-    }
-
-    // Calculate Transform Origin
-    const rect = imgElement.getBoundingClientRect();
-    const targetWidth = (rect.height / imgElement.naturalHeight) * imgElement.naturalWidth;
-    const scaledWidth = targetWidth * this.options.highlightScale;
-    const scaledHeight = rect.height * this.options.highlightScale;
-
-    const virtualTop = rect.y - (scaledHeight - rect.height) / 2;
-    const virtualBottom = rect.bottom + (scaledHeight - rect.height) / 2;
-    const virtualLeft = rect.x - (scaledWidth - targetWidth) / 2;
-    const virtualRight = rect.right + (scaledWidth - targetWidth) / 2;
-
-    let vOrigin = "center";
-    if (virtualTop < 0) vOrigin = "top";
-    else if (virtualBottom > window.innerHeight) vOrigin = "bottom";
-
-    let hOrigin = "center";
-    if (virtualLeft < 0) hOrigin = "left";
-    else if (virtualRight > window.innerWidth) hOrigin = "right";
-
-    imgElement.style.transformOrigin = `${vOrigin} ${hOrigin}`;
-
-    return imgElement;
   }
 
-  private async animatePopUp(image: HTMLImageElement, widthVh: number) {
-    const animation = image.animate(
+  private async loadAssetData(element: KioskMediaElement, asset: KioskAsset): Promise<KioskMediaElement | null> {
+    try {
+      let blobUrl: string;
+
+      if (asset.type === 'VIDEO' && element instanceof HTMLVideoElement) {
+        blobUrl = await this.service.fetchVideoBlob(asset);
+        element.src = blobUrl;
+
+        await new Promise<void>((resolve, reject) => {
+          // For video, we wait for loadeddata so we have dimensions
+          element.onloadeddata = () => resolve();
+          element.onerror = (e) => reject(e);
+        });
+      } else {
+        // Assume Image
+        blobUrl = await this.service.fetchImageBlob(asset);
+        element.src = blobUrl;
+
+        await new Promise<void>((resolve, reject) => {
+          element.onload = () => resolve();
+          element.onerror = (e) => reject(e);
+        });
+      }
+
+      // Tag element for cleanup later
+      element.dataset.blobUrl = blobUrl;
+
+      // Calculate Transform Origin
+      const rect = element.getBoundingClientRect();
+      const { width: naturalWidth, height: naturalHeight } = this.getMediaDimensions(element);
+
+      const targetWidth = (rect.height / naturalHeight) * naturalWidth;
+      const scaledWidth = targetWidth * this.options.highlightScale;
+      const scaledHeight = rect.height * this.options.highlightScale;
+
+      const virtualTop = rect.y - (scaledHeight - rect.height) / 2;
+      const virtualBottom = rect.bottom + (scaledHeight - rect.height) / 2;
+      const virtualLeft = rect.x - (scaledWidth - targetWidth) / 2;
+      const virtualRight = rect.right + (scaledWidth - targetWidth) / 2;
+
+      let vOrigin = "center";
+      if (virtualTop < 0) vOrigin = "top";
+      else if (virtualBottom > window.innerHeight) vOrigin = "bottom";
+
+      let hOrigin = "center";
+      if (virtualLeft < 0) hOrigin = "left";
+      else if (virtualRight > window.innerWidth) hOrigin = "right";
+
+      element.style.transformOrigin = `${vOrigin} ${hOrigin}`;
+
+      return element;
+
+    } catch (e) {
+      console.error("Failed to load asset data", e);
+      element.remove();
+      return null;
+    }
+  }
+
+  private getMediaDimensions(element: KioskMediaElement): { width: number, height: number } {
+    if (element instanceof HTMLVideoElement) {
+      return { width: element.videoWidth, height: element.videoHeight };
+    }
+    return { width: element.naturalWidth, height: element.naturalHeight };
+  }
+
+  private async animatePopUp(element: KioskMediaElement, widthVh: number) {
+    const animation = element.animate(
       [
         {
           boxShadow: "0 0 1cm transparent",
@@ -236,8 +312,8 @@ export class KioskEngine {
     animation.commitStyles();
   }
 
-  private async animatePopDown(image: HTMLImageElement, widthVh: number) {
-    const animation = image.animate(
+  private async animatePopDown(element: KioskMediaElement, widthVh: number) {
+    const animation = element.animate(
       [
         {
           boxShadow: "0 0 1cm #000000",
@@ -260,16 +336,18 @@ export class KioskEngine {
     animation.commitStyles();
   }
 
-  private async removeOutOfViewportImages(row: HTMLDivElement) {
-    const images = Array.from(row.querySelectorAll("img"));
-    const outOfView = images.filter(img => {
-      const rect = img.getBoundingClientRect();
+  private async removeOutOfViewportAssets(row: HTMLDivElement) {
+    // Select both images and videos
+    const assets = Array.from(row.querySelectorAll("img, video")) as KioskMediaElement[];
+
+    const outOfView = assets.filter(el => {
+      const rect = el.getBoundingClientRect();
       return rect.right < 0 || rect.left > window.innerWidth;
     });
 
-    const promises = outOfView.map(async (img) => {
-      const width = img.getBoundingClientRect().width;
-      const anim = img.animate(
+    const promises = outOfView.map(async (el) => {
+      const width = el.getBoundingClientRect().width;
+      const anim = el.animate(
         [
           { margin: "0 0.0625cm", width: `${width}px` },
           { margin: "0 0", width: "0" },
@@ -283,22 +361,22 @@ export class KioskEngine {
       await anim.finished;
 
       // Cleanup blob URL to prevent memory leaks
-      if (img.dataset.blobUrl) {
-        URL.revokeObjectURL(img.dataset.blobUrl);
+      if (el.dataset.blobUrl) {
+        URL.revokeObjectURL(el.dataset.blobUrl);
       }
-      img.remove();
+      el.remove();
     });
 
     await Promise.all(promises);
   }
 
-  private resetStyle(image: HTMLImageElement) {
-    image.style.removeProperty("box-shadow");
-    image.style.removeProperty("margin");
-    image.style.removeProperty("transform");
-    image.style.removeProperty("transform-origin");
-    image.style.removeProperty("width");
-    image.style.removeProperty("z-index");
+  private resetStyle(element: KioskMediaElement) {
+    element.style.removeProperty("box-shadow");
+    element.style.removeProperty("margin");
+    element.style.removeProperty("transform");
+    element.style.removeProperty("transform-origin");
+    element.style.removeProperty("width");
+    element.style.removeProperty("z-index");
   }
 
   private sleep(ms: number) {
