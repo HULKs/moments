@@ -21,10 +21,11 @@ body {
   flex-wrap: nowrap;
   justify-content: center;
   /* Ensure rows don't collapse */
-  min-height: 10px; 
+  min-height: 10px;
 }
 
-img {
+img,
+video {
   display: block;
   object-fit: cover;
   border-radius: 0.125cm;
