@@ -39,6 +39,10 @@ export class KioskEngine {
 
   public async start() {
     this.isRunning = true;
+
+    // Hide cursor when the show starts
+    document.body.classList.add('no-cursor');
+
     this.setupGrid();
 
     // Wait for at least one asset to exist
@@ -62,6 +66,8 @@ export class KioskEngine {
 
   public stop() {
     this.isRunning = false;
+    // Show cursor again if stopped
+    document.body.classList.remove('no-cursor');
   }
 
   private setupGrid() {
@@ -156,11 +162,7 @@ export class KioskEngine {
 
       const sibling = validSiblings[Math.floor(Math.random() * validSiblings.length)];
 
-      // Determine what element to create based on the next asset
-      // (We don't know the type until we peek or fetch, but strictly speaking 
-      // we need the element in the DOM to insertBefore. 
-      // Let's fetch the asset data first.)
-      const assetCheck = await this.service.getNextImage(); // Note: Method name might still be getNextImage in service, but returns KioskAsset
+      const assetCheck = await this.service.getNextImage();
       if (!assetCheck) return null;
 
       // Create specific element based on type
@@ -176,11 +178,6 @@ export class KioskEngine {
       }
 
       row.insertBefore(element, sibling);
-
-      // We need to pass the asset we just peeked/popped to the loading logic.
-      // Since service.getNextImage() pops from queue, we use `assetCheck` directly below.
-      // However, `loadData` block below expects to call `getNextImage` again if we don't reuse.
-      // To keep logic simple: we reused the asset we just got.
 
       // Initialize styles
       element.style.boxShadow = "none";
