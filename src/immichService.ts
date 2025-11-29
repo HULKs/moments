@@ -126,12 +126,17 @@ export class ImmichService {
   }
 
   public async getNextImage(): Promise<KioskAsset | undefined> {
-    // 1. Priority: New assets
+    let asset: KioskAsset | undefined;
+
+    // 1. Priority: New assets (Randomly select and remove from newQueue)
     if (this.newQueue.length > 0) {
-      return this.newQueue.pop();
+      const randomIndex = Math.floor(Math.random() * this.newQueue.length);
+      // splice removes the item and returns it in an array, so we take [0]
+      asset = this.newQueue.splice(randomIndex, 1)[0];
+      return asset;
     }
 
-    // 2. Fallback: Random old asset
+    // 2. Fallback: Random old asset (Does not remove, used for continuous loop)
     if (this.oldQueue.length > 0) {
       const randomIndex = Math.floor(Math.random() * this.oldQueue.length);
       return this.oldQueue[randomIndex];
