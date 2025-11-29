@@ -39,7 +39,7 @@ export class ImmichService {
   public async startPolling(intervalMs: number = 5000) {
     await this.refreshAssets();
     setInterval(() => {
-      this.refreshAssets().catch(console.error);
+      this.refreshAssets(true).catch(console.error);
     }, intervalMs);
   }
 
@@ -50,7 +50,7 @@ export class ImmichService {
     return this.isConnected;
   }
 
-  private async refreshAssets() {
+  private async refreshAssets(pushToNew: boolean = false) {
     try {
       const albumInfo = await getAlbumInfo({ id: this.config.albumId });
 
@@ -81,7 +81,9 @@ export class ImmichService {
 
           this.fetchedIds.add(asset.id);
 
-          this.newQueue.push(kioskAsset);
+          if (pushToNew) {
+            this.newQueue.push(kioskAsset);
+          }
           this.oldQueue.push(kioskAsset);
         }
       }
@@ -126,17 +128,12 @@ export class ImmichService {
   }
 
   public async getNextImage(): Promise<KioskAsset | undefined> {
-    let asset: KioskAsset | undefined;
-
-    // 1. Priority: New assets (Randomly select and remove from newQueue)
+    // 1. Priority: New assets
     if (this.newQueue.length > 0) {
-      const randomIndex = Math.floor(Math.random() * this.newQueue.length);
-      // splice removes the item and returns it in an array, so we take [0]
-      asset = this.newQueue.splice(randomIndex, 1)[0];
-      return asset;
+      return this.newQueue.pop();
     }
 
-    // 2. Fallback: Random old asset (Does not remove, used for continuous loop)
+    // 2. Fallback: Random old asset
     if (this.oldQueue.length > 0) {
       const randomIndex = Math.floor(Math.random() * this.oldQueue.length);
       return this.oldQueue[randomIndex];
