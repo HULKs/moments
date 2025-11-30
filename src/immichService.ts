@@ -127,7 +127,7 @@ export class ImmichService {
     }
   }
 
-  public async getNextImage(displayedIds: Set<string>): Promise<KioskAsset | undefined> {
+  public getNextImage(displayedIds: Set<string>): KioskAsset | undefined {
     // 1. Priority: New assets
     if (this.newQueue.length > 0) {
       return this.newQueue.pop();

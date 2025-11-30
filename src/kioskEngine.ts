@@ -163,7 +163,7 @@ export class KioskEngine {
 
       const sibling = validSiblings[Math.floor(Math.random() * validSiblings.length)];
 
-      const assetCheck = await this.service.getNextImage(this.displayedIds);
+      const assetCheck = this.service.getNextImage(this.displayedIds);
       if (!assetCheck) return null;
 
       this.displayedIds.add(assetCheck.id);
@@ -195,7 +195,7 @@ export class KioskEngine {
 
     } else {
       // Empty row case
-      const assetCheck = await this.service.getNextImage(this.displayedIds);
+      const assetCheck = this.service.getNextImage(this.displayedIds);
       if (!assetCheck) return null;
 
       this.displayedIds.add(assetCheck.id);
