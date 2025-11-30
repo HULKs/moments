@@ -163,23 +163,23 @@ export class KioskEngine {
 
       const sibling = validSiblings[Math.floor(Math.random() * validSiblings.length)];
 
-      const assetCheck = this.service.getNextImage(this.displayedIds);
-      if (!assetCheck) return null;
+      const asset = this.service.getNextImage(this.displayedIds);
+      if (!asset) return null;
 
-      this.displayedIds.add(assetCheck.id);
+      this.displayedIds.add(asset.id);
 
       // Create specific element based on type
-      if (assetCheck.type === 'VIDEO') {
+      if (asset.type === 'VIDEO') {
         const vid = document.createElement("video");
         vid.muted = true;
         vid.autoplay = true;
         vid.loop = true;
         vid.playsInline = true;
-        vid.dataset.immichId = assetCheck.id;
+        vid.dataset.immichId = asset.id;
         element = vid;
       } else {
         element = document.createElement("img");
-        element.dataset.immichId = assetCheck.id;
+        element.dataset.immichId = asset.id;
       }
 
       row.insertBefore(element, sibling);
@@ -191,26 +191,26 @@ export class KioskEngine {
       element.style.width = "0";
       element.style.zIndex = "1";
 
-      return this.loadAssetData(element, assetCheck);
+      return this.loadAssetData(element, asset);
 
     } else {
       // Empty row case
-      const assetCheck = this.service.getNextImage(this.displayedIds);
-      if (!assetCheck) return null;
+      const asset = this.service.getNextImage(this.displayedIds);
+      if (!asset) return null;
 
-      this.displayedIds.add(assetCheck.id);
+      this.displayedIds.add(asset.id);
 
-      if (assetCheck.type === 'VIDEO') {
+      if (asset.type === 'VIDEO') {
         const vid = document.createElement("video");
         vid.muted = true;
         vid.autoplay = true;
         vid.loop = true;
         vid.playsInline = true;
-        vid.dataset.immichId = assetCheck.id;
+        vid.dataset.immichId = asset.id;
         element = vid;
       } else {
         element = document.createElement("img");
-        element.dataset.immichId = assetCheck.id;
+        element.dataset.immichId = asset.id;
       }
 
       row.appendChild(element);
@@ -222,7 +222,7 @@ export class KioskEngine {
       element.style.width = "0";
       element.style.zIndex = "1";
 
-      return this.loadAssetData(element, assetCheck);
+      return this.loadAssetData(element, asset);
     }
   }
 
