@@ -11,7 +11,7 @@ import type { KioskConfig, KioskAsset } from './types';
 export class ImmichService {
   private fetchedIds = new Set<string>();
   private newQueue: KioskAsset[] = [];
-  private oldQueue: KioskAsset[] = [];
+  private availableAssets: Set<KioskAsset> = new Set();
   private config: KioskConfig;
   private isConnected: boolean = true;
 
@@ -84,7 +84,7 @@ export class ImmichService {
           if (pushToNew) {
             this.newQueue.push(kioskAsset);
           }
-          this.oldQueue.push(kioskAsset);
+          this.availableAssets.add(kioskAsset);
         }
       }
     } catch (err) {
@@ -127,16 +127,21 @@ export class ImmichService {
     }
   }
 
-  public async getNextImage(): Promise<KioskAsset | undefined> {
+  public async getNextImage(displayedIds: Set<string>): Promise<KioskAsset | undefined> {
     // 1. Priority: New assets
     if (this.newQueue.length > 0) {
       return this.newQueue.pop();
     }
 
-    // 2. Fallback: Random old asset
-    if (this.oldQueue.length > 0) {
-      const randomIndex = Math.floor(Math.random() * this.oldQueue.length);
-      return this.oldQueue[randomIndex];
+    // 2. Fallback: Random old asset that is not yet shown
+    const notShownIds = this.availableAssets.difference(displayedIds)
+    if (notShownIds.size > 0) {
+      return [...notShownIds][Math.floor(Math.random() * notShownIds.size)];
+    }
+
+    // 3. Fallback: Random old asset
+    if (this.availableAssets.size > 0) {
+      return [...this.availableAssets][Math.floor(Math.random() * this.availableAssets.size)];
     }
 
     return undefined;

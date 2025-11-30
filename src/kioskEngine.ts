@@ -31,6 +31,7 @@ export class KioskEngine {
   private service: ImmichService;
   private isRunning = false;
   private rowElements: HTMLDivElement[] = [];
+  private displayedIds = new Set<string>();
 
   constructor(service: ImmichService, options: KioskOptions = DefaultOptions) {
     this.service = service;
@@ -162,8 +163,10 @@ export class KioskEngine {
 
       const sibling = validSiblings[Math.floor(Math.random() * validSiblings.length)];
 
-      const assetCheck = await this.service.getNextImage();
+      const assetCheck = await this.service.getNextImage(this.displayedIds);
       if (!assetCheck) return null;
+
+      this.displayedIds.add(assetCheck.id);
 
       // Create specific element based on type
       if (assetCheck.type === 'VIDEO') {
@@ -172,9 +175,11 @@ export class KioskEngine {
         vid.autoplay = true;
         vid.loop = true;
         vid.playsInline = true;
+        vid.dataset.immichId = assetCheck.id;
         element = vid;
       } else {
         element = document.createElement("img");
+        element.dataset.immichId = assetCheck.id;
       }
 
       row.insertBefore(element, sibling);
@@ -190,8 +195,10 @@ export class KioskEngine {
 
     } else {
       // Empty row case
-      const assetCheck = await this.service.getNextImage();
+      const assetCheck = await this.service.getNextImage(this.displayedIds);
       if (!assetCheck) return null;
+
+      this.displayedIds.add(assetCheck.id);
 
       if (assetCheck.type === 'VIDEO') {
         const vid = document.createElement("video");
@@ -199,9 +206,11 @@ export class KioskEngine {
         vid.autoplay = true;
         vid.loop = true;
         vid.playsInline = true;
+        vid.dataset.immichId = assetCheck.id;
         element = vid;
       } else {
         element = document.createElement("img");
+        element.dataset.immichId = assetCheck.id;
       }
 
       row.appendChild(element);
@@ -360,6 +369,9 @@ export class KioskEngine {
       // Cleanup blob URL to prevent memory leaks
       if (el.dataset.blobUrl) {
         URL.revokeObjectURL(el.dataset.blobUrl);
+      }
+      if (el.dataset.immichId) {
+        this.displayedIds.delete(el.dataset.immichId);
       }
       el.remove();
     });
