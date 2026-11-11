@@ -1,11 +1,12 @@
 import {
   defaults,
-  getAlbumInfo,
+  searchAssets,
   viewAsset,
   playAssetVideo,
   AssetMediaSize,
   AssetTypeEnum
 } from '@immich/sdk';
+import type { AssetResponseDto } from '@immich/sdk';
 import type { KioskConfig, KioskAsset } from './types';
 
 export class ImmichService {
@@ -29,7 +30,6 @@ export class ImmichService {
     defaults.baseUrl = cleanBaseUrl;
     defaults.headers = {
       "x-api-key": config.apiKey,
-      "Accept": "application/json",
     };
   }
 
@@ -52,12 +52,22 @@ export class ImmichService {
 
   private async refreshAssets(pushToNew: boolean = false) {
     try {
-      const albumInfo = await getAlbumInfo({ id: this.config.albumId });
+      const assets: AssetResponseDto[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await searchAssets({
+          metadataSearchDto: {
+            filter: { albumIds: { any: [this.config.albumId] } },
+            size: 1000,
+            withExif: true,
+            cursor,
+          },
+        });
+        assets.push(...response.assets.items);
+        cursor = response.assets.nextCursor ?? undefined;
+      } while (cursor);
 
-      // Update status on success
-      this.isConnected = true;
-
-      const assets = albumInfo.assets.sort((a, b) =>
+      assets.sort((a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
 
@@ -87,6 +97,9 @@ export class ImmichService {
           this.availableAssets.add(kioskAsset);
         }
       }
+
+      // Update status after the complete refresh succeeds
+      this.isConnected = true;
     } catch (err) {
       console.error("Error polling Immich album:", err);
       // Update status on failure
