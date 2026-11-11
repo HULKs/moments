@@ -10,6 +10,8 @@ body {
 body {
   display: grid;
   grid-template-columns: 100vw;
+  grid-auto-rows: var(--row-height, 200px);
+  align-content: start;
   row-gap: 0.125cm;
   margin: 0.0625cm 0;
 }
@@ -31,6 +33,7 @@ body.no-cursor {
 img,
 video {
   display: block;
+  flex-shrink: 0;
   object-fit: cover;
   border-radius: 0.125cm;
   will-change: box-shadow, margin, transform, width;

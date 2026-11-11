@@ -8,7 +8,7 @@ interface KioskOptions {
   popDownDuration: number;
   allowedRelativeWidthFromCenterForAdditions: number;
   easing: string;
-  numberOfRows: number;
+  rowHeight: number;
 }
 
 const baseDuration = 1250;
@@ -20,7 +20,7 @@ export const DefaultOptions: KioskOptions = {
   popDownDuration: baseDuration * 0.75,
   allowedRelativeWidthFromCenterForAdditions: 0.4,
   easing: "cubic-bezier(0.65, 0.05, 0.36, 1)",
-  numberOfRows: 5,
+  rowHeight: 200,
 };
 
 // Helper type for our grid items
@@ -32,6 +32,10 @@ export class KioskEngine {
   private isRunning = false;
   private rowElements: HTMLDivElement[] = [];
   private displayedIds = new Set<string>();
+  private needsLayoutUpdate = false;
+  private readonly handleResize = () => {
+    this.needsLayoutUpdate = true;
+  };
 
   constructor(service: ImmichService, options: KioskOptions = DefaultOptions) {
     this.service = service;
@@ -45,9 +49,10 @@ export class KioskEngine {
     document.body.classList.add('no-cursor');
 
     this.setupGrid();
+    window.addEventListener('resize', this.handleResize);
 
     // Wait for at least one asset to exist
-    while (!this.service.hasContent()) {
+    while (this.isRunning && !this.service.hasContent()) {
       await this.sleep(500);
     }
 
@@ -57,6 +62,10 @@ export class KioskEngine {
     // Main Loop: Add new assets one by one with animation
     while (this.isRunning) {
       try {
+        if (this.needsLayoutUpdate) {
+          this.updateGrid();
+          await this.fillScreen();
+        }
         await this.processNextIteration();
       } catch (error) {
         console.error("Error in main loop:", error);
@@ -67,23 +76,39 @@ export class KioskEngine {
 
   public stop() {
     this.isRunning = false;
+    window.removeEventListener('resize', this.handleResize);
     // Show cursor again if stopped
     document.body.classList.remove('no-cursor');
   }
 
   private setupGrid() {
     document.body.innerHTML = '';
-    this.rowElements = Array.from({ length: this.options.numberOfRows }, () => {
+    this.rowElements = [];
+    document.body.style.setProperty('--row-height', `${this.options.rowHeight}px`);
+    this.updateGrid();
+  }
+
+  private updateGrid() {
+    this.needsLayoutUpdate = false;
+    const style = getComputedStyle(document.body);
+    const gap = parseFloat(style.rowGap);
+    const availableHeight = window.innerHeight - parseFloat(style.marginTop);
+    const rowCount = Math.max(1, Math.ceil((availableHeight + gap) / (this.options.rowHeight + gap)));
+
+    while (this.rowElements.length > rowCount) {
+      const row = this.rowElements.pop()!;
+      for (const element of row.querySelectorAll<KioskMediaElement>('img, video')) {
+        this.removeAsset(element);
+      }
+      row.remove();
+    }
+
+    while (this.rowElements.length < rowCount) {
       const row = document.createElement("div");
       row.classList.add("row");
       document.body.appendChild(row);
-      return row;
-    });
-
-    document.body.style.setProperty(
-      "grid-template-rows",
-      `repeat(${this.options.numberOfRows}, calc(${100 / this.options.numberOfRows}vh - 0.125cm))`
-    );
+      this.rowElements.push(row);
+    }
   }
 
   private async fillScreen() {
@@ -96,9 +121,11 @@ export class KioskEngine {
         if (widthOfRow >= window.innerWidth) break;
 
         try {
-          const element = await this.loadAndInsertAsset(selectedRow, mediaInRow);
+          // Append during filling; center-only insertion is for animated additions.
+          const element = await this.loadAndInsertAsset(selectedRow, []);
+          if (!element) break;
           // For initial fill, we don't want the "pop" animation state left over
-          if (element) this.resetStyle(element);
+          this.resetStyle(element);
         } catch (e) {
           // Break inner loop if loading fails or no assets
           break;
@@ -126,8 +153,8 @@ export class KioskEngine {
     // Get dimensions regardless of element type
     const { width: naturalWidth, height: naturalHeight } = this.getMediaDimensions(element);
 
-    // Calculate target width based on 20vh reference logic
-    const width = (20 / naturalHeight) * naturalWidth;
+    // CSS pixels scale with browser zoom, just like the row height.
+    const width = (selectedRow.getBoundingClientRect().height / naturalHeight) * naturalWidth;
 
     await this.animatePopUp(element, width);
     await this.sleep(this.options.highlightDuration);
@@ -292,7 +319,7 @@ export class KioskEngine {
     return { width: element.naturalWidth, height: element.naturalHeight };
   }
 
-  private async animatePopUp(element: KioskMediaElement, widthVh: number) {
+  private async animatePopUp(element: KioskMediaElement, widthPx: number) {
     const animation = element.animate(
       [
         {
@@ -305,7 +332,7 @@ export class KioskEngine {
           boxShadow: `0 0 1cm #000000, 0 0 0 ${1 / this.options.highlightScale}px rgba(0, 0, 0, 0.25)`,
           margin: "0 0.0625cm",
           transform: `scale(${this.options.highlightScale})`,
-          width: `${widthVh}vh`,
+          width: `${widthPx}px`,
         },
       ],
       {
@@ -318,18 +345,18 @@ export class KioskEngine {
     animation.commitStyles();
   }
 
-  private async animatePopDown(element: KioskMediaElement, widthVh: number) {
+  private async animatePopDown(element: KioskMediaElement, widthPx: number) {
     const animation = element.animate(
       [
         {
           boxShadow: "0 0 1cm #000000",
           transform: `scale(${this.options.highlightScale})`,
-          width: `${widthVh}vh`,
+          width: `${widthPx}px`,
         },
         {
           boxShadow: "0 0 1cm transparent",
           transform: "none",
-          width: `${widthVh}vh`,
+          width: `${widthPx}px`,
         },
       ],
       {
@@ -366,17 +393,17 @@ export class KioskEngine {
       );
       await anim.finished;
 
-      // Cleanup blob URL to prevent memory leaks
-      if (el.dataset.blobUrl) {
-        URL.revokeObjectURL(el.dataset.blobUrl);
-      }
-      if (el.dataset.immichId) {
-        this.displayedIds.delete(el.dataset.immichId);
-      }
-      el.remove();
+      this.removeAsset(el);
     });
 
     await Promise.all(promises);
+  }
+
+  private removeAsset(element: KioskMediaElement) {
+    for (const animation of element.getAnimations()) animation.cancel();
+    if (element.dataset.blobUrl) URL.revokeObjectURL(element.dataset.blobUrl);
+    if (element.dataset.immichId) this.displayedIds.delete(element.dataset.immichId);
+    element.remove();
   }
 
   private resetStyle(element: KioskMediaElement) {
